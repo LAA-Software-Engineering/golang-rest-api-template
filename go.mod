@@ -1,7 +1,6 @@
 module golang-rest-api-template
 
 go 1.23
-
 require (
 	github.com/araujo88/gin-gonic-xss-middleware v0.0.0-20221014023455-d89f16de6a7e
 	github.com/gin-contrib/cors v1.7.3
@@ -16,7 +15,7 @@ require (
 	github.com/swaggo/swag v1.16.4
 	go.mongodb.org/mongo-driver v1.17.2
 	go.uber.org/zap v1.27.0
-	golang.org/x/crypto v0.33.0
+	golang.org/x/crypto v0.35.0
 	golang.org/x/time v0.10.0
 	gorm.io/driver/postgres v1.5.11
 	gorm.io/gorm v1.25.12
