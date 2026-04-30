@@ -275,10 +275,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "204": {
-                        "description": "Successfully deleted book",
-                        "schema": {
-                            "type": "string"
-                        }
+                        "description": "Successfully deleted book"
                     },
                     "401": {
                         "description": "Unauthorized",

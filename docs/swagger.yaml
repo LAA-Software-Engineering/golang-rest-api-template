@@ -146,8 +146,6 @@ paths:
       responses:
         "204":
           description: Successfully deleted book
-          schema:
-            type: string
         "401":
           description: Unauthorized
           schema:
