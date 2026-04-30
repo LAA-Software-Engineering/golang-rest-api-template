@@ -249,7 +249,7 @@ func (r *bookRepository) UpdateBook(c *gin.Context) {
 // @Security JwtAuth
 // @Produce json
 // @Param id path string true "Book ID"
-// @Success 204 {string} string "Successfully deleted book"
+// @Success 204 "Successfully deleted book"
 // @Failure 401 {string} string "Unauthorized"
 // @Failure 404 {string} string "book not found"
 // @Router /books/{id} [delete]
@@ -268,5 +268,5 @@ func (r *bookRepository) DeleteBook(c *gin.Context) {
 
 	r.DB.Delete(&book)
 
-	c.JSON(http.StatusNoContent, gin.H{"data": true})
+	c.Status(http.StatusNoContent)
 }

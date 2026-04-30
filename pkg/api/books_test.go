@@ -588,6 +588,6 @@ func TestDeleteBook(t *testing.T) {
 	req, _ := http.NewRequest(http.MethodDelete, "/book/1", nil)
 	r.ServeHTTP(w, req)
 
-	// Assert the response
 	assert.Equal(t, http.StatusNoContent, w.Code)
+	assert.Empty(t, w.Body.Bytes())
 }
