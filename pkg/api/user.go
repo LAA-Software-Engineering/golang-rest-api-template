@@ -3,11 +3,11 @@ package api
 import (
 	"context"
 	"errors"
-	"fmt"
 	"golang-rest-api-template/pkg/auth"
 	"golang-rest-api-template/pkg/database"
 	"golang-rest-api-template/pkg/models"
 	"net/http"
+	"strings"
 
 	"gorm.io/gorm"
 
@@ -23,6 +23,25 @@ type UserRepository interface {
 type userRepository struct {
 	DB  database.Database
 	Ctx *context.Context
+}
+
+// registerUsernameConflict detects unique violations on user registration.
+// Prefer gorm.ErrDuplicatedKey; fall back to driver strings when translation is missing.
+func registerUsernameConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		return true
+	}
+	s := strings.ToLower(err.Error())
+	if strings.Contains(s, "unique constraint failed") {
+		return true
+	}
+	if strings.Contains(s, "duplicate key") && strings.Contains(s, "unique") {
+		return true
+	}
+	return false
 }
 
 func NewUserRepository(db database.Database, ctx *context.Context) *userRepository {
@@ -92,6 +111,7 @@ func (r *userRepository) LoginHandler(c *gin.Context) {
 // @Param   user     body    models.LoginUser     true        "User registration object"
 // @Success 201 {string} string	"Successfully registered"
 // @Failure 400 {string} string "Bad Request"
+// @Failure 409 {string} string "Conflict"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /register [post]
 func (r *userRepository) RegisterHandler(c *gin.Context) {
@@ -114,7 +134,11 @@ func (r *userRepository) RegisterHandler(c *gin.Context) {
 
 	// Save the user to the database
 	if err := r.DB.Create(&newUser).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Could not save user: %v", err)})
+		if registerUsernameConflict(err) {
+			c.JSON(http.StatusConflict, gin.H{"error": "username already taken"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not save user"})
 		return
 	}
 
