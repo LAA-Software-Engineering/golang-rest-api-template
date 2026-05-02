@@ -21,6 +21,11 @@ import (
 // (scoped by generation) go stale without Redis KEYS.
 const booksListCacheGenKey = "v1:books:list_cache_gen"
 
+const (
+	findBooksMinLimit = 1
+	findBooksMaxLimit = 100
+)
+
 func booksListDataCacheKey(gen int64, offset, limit int) string {
 	return fmt.Sprintf("books_g%d_offset_%d_limit_%d", gen, offset, limit)
 }
@@ -113,9 +118,10 @@ func (r *bookRepository) Healthcheck(c *gin.Context) {
 // @Tags books
 // @Security ApiKeyAuth
 // @Produce json
-// @Param offset query int false "Offset for pagination" default(0)
-// @Param limit query int false "Limit for pagination" default(10)
+// @Param offset query int false "Offset for pagination (must be >= 0)" default(0)
+// @Param limit query int false "Limit for pagination (minimum 1, capped at 100)" default(10)
 // @Success 200 {array} models.Book "Successfully retrieved list of books"
+// @Failure 400 {string} string "Bad Request"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /books [get]
 func (r *bookRepository) FindBooks(c *gin.Context) {
@@ -135,6 +141,18 @@ func (r *bookRepository) FindBooks(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid limit format"})
 		return
+	}
+
+	if offset < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "offset must be >= 0"})
+		return
+	}
+	if limit < findBooksMinLimit {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "limit must be at least 1"})
+		return
+	}
+	if limit > findBooksMaxLimit {
+		limit = findBooksMaxLimit
 	}
 
 	gen := r.booksListCacheGeneration()
