@@ -80,7 +80,30 @@ func TestLoginHandlerInvalidJSON(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-	assert.Contains(t, w.Body.String(), "Bad Request")
+	assert.Contains(t, w.Body.String(), "error")
+}
+
+func TestLoginHandlerBindValidationLoginUser(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockDB := database.NewMockDatabase(ctrl)
+	ctx := context.Background()
+	repo := NewUserRepository(mockDB, &ctx)
+
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.POST("/login", repo.LoginHandler)
+
+	// Missing password — binding is on models.LoginUser, not models.User
+	body, _ := json.Marshal(map[string]string{"username": "onlyuser"})
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/login", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "Password")
 }
 
 func TestLoginHandlerUserNotFound(t *testing.T) {
