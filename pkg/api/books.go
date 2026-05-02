@@ -10,6 +10,7 @@ import (
 	"golang-rest-api-template/pkg/models"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -108,7 +109,7 @@ func (r *bookRepository) Healthcheck(c *gin.Context) {
 
 // FindBooks godoc
 // @Summary Get all books with pagination
-// @Description Get a list of all books with optional pagination. List entries are keyed by a monotonic cache generation (no Redis KEYS). Concurrent cache misses for the same offset/limit and generation are coalesced (singleflight) so only one database read and Redis write runs per cache key.
+// @Description Get a list of all books with optional pagination. List entries are keyed by a monotonic cache generation (no Redis KEYS) and canonical integer offset/limit after parsing (leading zeros and surrounding whitespace in query params do not fragment the cache). Concurrent cache misses for the same offset/limit and generation are coalesced (singleflight) so only one database read and Redis write runs per cache key.
 // @Tags books
 // @Security ApiKeyAuth
 // @Produce json
@@ -120,11 +121,10 @@ func (r *bookRepository) Healthcheck(c *gin.Context) {
 func (r *bookRepository) FindBooks(c *gin.Context) {
 	var books []models.Book
 
-	// Get query params
-	offsetQuery := c.DefaultQuery("offset", "0")
-	limitQuery := c.DefaultQuery("limit", "10")
+	// Query params trimmed so cache keys match parsed integers (no cache fragmentation from " 0 " vs "0").
+	offsetQuery := strings.TrimSpace(c.DefaultQuery("offset", "0"))
+	limitQuery := strings.TrimSpace(c.DefaultQuery("limit", "10"))
 
-	// Convert query params to integers
 	offset, err := strconv.Atoi(offsetQuery)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid offset format"})

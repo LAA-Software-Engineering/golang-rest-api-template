@@ -54,7 +54,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Get a list of all books with optional pagination. List entries are keyed by a monotonic cache generation (no Redis KEYS). Concurrent cache misses for the same offset/limit and generation are coalesced (singleflight) so only one database read and Redis write runs per cache key.",
+                "description": "Get a list of all books with optional pagination. List entries are keyed by a monotonic cache generation (no Redis KEYS) and canonical integer offset/limit after parsing (leading zeros and surrounding whitespace in query params do not fragment the cache). Concurrent cache misses for the same offset/limit and generation are coalesced (singleflight) so only one database read and Redis write runs per cache key.",
                 "produces": [
                     "application/json"
                 ],

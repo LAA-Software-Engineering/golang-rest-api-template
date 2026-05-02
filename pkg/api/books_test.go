@@ -886,3 +886,87 @@ func TestFindBooksSingleflightCoalescesDB(t *testing.T) {
 		t.Fatalf("expected exactly 1 coalesced DB query, got %d", got)
 	}
 }
+
+func TestFindBooksLeadingZerosShareListCache(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "leadzero.sqlite")
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&models.Book{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&models.Book{Title: "One", Author: "A"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	const cbName = "pkg/api:test_leadzero_list_queries"
+	var queryN atomic.Int32
+	if err := db.Callback().Query().After("gorm:query").Register(cbName, func(*gorm.DB) {
+		queryN.Add(1)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Callback().Query().Remove(cbName) })
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockCache := cache.NewMockCache(ctrl)
+	ctx := context.Background()
+	repo := NewBookRepository(&database.GormDatabase{DB: db}, mockCache, &ctx)
+
+	dataKey := booksListDataCacheKey(0, 0, 10)
+	var cacheMu sync.Mutex
+	var cachedPayload string
+	mockCache.EXPECT().Get(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, key string) *redis.StringCmd {
+		switch key {
+		case booksListCacheGenKey:
+			return redis.NewStringResult("", redis.Nil)
+		case dataKey:
+			cacheMu.Lock()
+			s := cachedPayload
+			cacheMu.Unlock()
+			if s == "" {
+				return redis.NewStringResult("", redis.Nil)
+			}
+			return redis.NewStringResult(s, nil)
+		default:
+			return redis.NewStringResult("", errors.New("unexpected cache Get key"))
+		}
+	}).MinTimes(4)
+	mockCache.EXPECT().Set(ctx, dataKey, gomock.Any(), time.Minute).DoAndReturn(func(_ context.Context, _ string, v interface{}, _ time.Duration) *redis.StatusCmd {
+		var b []byte
+		switch x := v.(type) {
+		case []byte:
+			b = x
+		case string:
+			b = []byte(x)
+		default:
+			var merr error
+			b, merr = json.Marshal(x)
+			if merr != nil {
+				return redis.NewStatusResult("", merr)
+			}
+		}
+		cacheMu.Lock()
+		cachedPayload = string(b)
+		cacheMu.Unlock()
+		return redis.NewStatusResult("OK", nil)
+	}).Times(1)
+
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.GET("/books", repo.FindBooks)
+
+	w1 := httptest.NewRecorder()
+	r.ServeHTTP(w1, httptest.NewRequest(http.MethodGet, "/books?offset=00&limit=010", nil))
+	assert.Equal(t, http.StatusOK, w1.Code)
+
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, httptest.NewRequest(http.MethodGet, "/books?offset=0&limit=10", nil))
+	assert.Equal(t, http.StatusOK, w2.Code)
+
+	if got := queryN.Load(); got != 1 {
+		t.Fatalf("expected one DB list query (second HTTP call hits same cache key), got %d", got)
+	}
+}
