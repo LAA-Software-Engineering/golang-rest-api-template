@@ -82,12 +82,12 @@ paths:
         Redis write runs per cache key.
       parameters:
       - default: 0
-        description: Offset for pagination
+        description: Offset for pagination (must be >= 0)
         in: query
         name: offset
         type: integer
       - default: 10
-        description: Limit for pagination
+        description: Limit for pagination (minimum 1, capped at 100)
         in: query
         name: limit
         type: integer
@@ -100,6 +100,10 @@ paths:
             items:
               $ref: '#/definitions/models.Book'
             type: array
+        "400":
+          description: Bad Request
+          schema:
+            type: string
         "500":
           description: Internal Server Error
           schema:

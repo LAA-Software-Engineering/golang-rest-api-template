@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -112,6 +113,91 @@ func TestFindBooksInvalidLimit(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), "Invalid limit format")
+}
+
+func TestFindBooksNegativeOffset(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockDB := database.NewMockDatabase(ctrl)
+	mockCache := cache.NewMockCache(ctrl)
+	ctx := context.Background()
+	repo := NewBookRepository(mockDB, mockCache, &ctx)
+
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.GET("/books", repo.FindBooks)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/books?offset=-1&limit=10", nil)
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "offset must be")
+}
+
+func TestFindBooksLimitBelowOne(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockDB := database.NewMockDatabase(ctrl)
+	mockCache := cache.NewMockCache(ctrl)
+	ctx := context.Background()
+	repo := NewBookRepository(mockDB, mockCache, &ctx)
+
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.GET("/books", repo.FindBooks)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/books?offset=0&limit=0", nil)
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "limit must be at least 1")
+}
+
+func TestFindBooksLimitCappedAtMax(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "cap_limit.sqlite")
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&models.Book{}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 120; i++ {
+		if err := db.Create(&models.Book{Title: "b" + strconv.Itoa(i), Author: "a"}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockCache := cache.NewMockCache(ctrl)
+	ctx := context.Background()
+	repo := NewBookRepository(&database.GormDatabase{DB: db}, mockCache, &ctx)
+
+	gomock.InOrder(
+		mockCache.EXPECT().Get(ctx, booksListCacheGenKey).Return(redis.NewStringResult("", redis.Nil)),
+		mockCache.EXPECT().Get(ctx, booksListDataCacheKey(0, 0, findBooksMaxLimit)).Return(redis.NewStringResult("", redis.Nil)),
+	)
+	mockCache.EXPECT().Set(ctx, booksListDataCacheKey(0, 0, findBooksMaxLimit), gomock.Any(), time.Minute).Return(redis.NewStatusResult("OK", nil)).Times(1)
+
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.GET("/books", repo.FindBooks)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/books?offset=0&limit=500", nil)
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp struct {
+		Data []models.Book `json:"data"`
+	}
+	assert.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Len(t, resp.Data, findBooksMaxLimit)
 }
 
 func TestCreateBookDatabaseError(t *testing.T) {
@@ -321,7 +407,8 @@ func TestFindBooksDatabaseError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	sqlDB, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	dbPath := filepath.Join(t.TempDir(), "findbooks_db_err.sqlite")
+	sqlDB, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}

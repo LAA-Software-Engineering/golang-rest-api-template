@@ -66,14 +66,14 @@ const docTemplate = `{
                     {
                         "type": "integer",
                         "default": 0,
-                        "description": "Offset for pagination",
+                        "description": "Offset for pagination (must be \u003e= 0)",
                         "name": "offset",
                         "in": "query"
                     },
                     {
                         "type": "integer",
                         "default": 10,
-                        "description": "Limit for pagination",
+                        "description": "Limit for pagination (minimum 1, capped at 100)",
                         "name": "limit",
                         "in": "query"
                     }
@@ -86,6 +86,12 @@ const docTemplate = `{
                             "items": {
                                 "$ref": "#/definitions/models.Book"
                             }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "string"
                         }
                     },
                     "500": {
