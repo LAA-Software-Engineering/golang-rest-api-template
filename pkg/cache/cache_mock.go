@@ -69,6 +69,20 @@ func (mr *MockCacheMockRecorder) Get(ctx, key interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockCache)(nil).Get), ctx, key)
 }
 
+// Incr mocks base method.
+func (m *MockCache) Incr(ctx context.Context, key string) *redis.IntCmd {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Incr", ctx, key)
+	ret0, _ := ret[0].(*redis.IntCmd)
+	return ret0
+}
+
+// Incr indicates an expected call of Incr.
+func (mr *MockCacheMockRecorder) Incr(ctx, key interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Incr", reflect.TypeOf((*MockCache)(nil).Incr), ctx, key)
+}
+
 // Keys mocks base method.
 func (m *MockCache) Keys(arg0 context.Context, arg1 string) *redis.StringSliceCmd {
 	m.ctrl.T.Helper()

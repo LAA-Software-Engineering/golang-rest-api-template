@@ -202,7 +202,7 @@ func TestCreateBookMissingAppCtx(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
-func TestCreateBookCacheKeysError(t *testing.T) {
+func TestCreateBookCacheIncrError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -223,52 +223,14 @@ func TestCreateBookCacheKeysError(t *testing.T) {
 	requestBody, _ := json.Marshal(inputBook)
 
 	mockDB.EXPECT().Create(gomock.Any()).Return(&gorm.DB{Error: nil})
-
-	// Mock cache keys error
-	mockCache.EXPECT().Keys(ctx, "books_offset_*").Return(redis.NewStringSliceResult(nil, errors.New("keys error")))
+	mockCache.EXPECT().Incr(ctx, booksListCacheGenKey).Return(redis.NewIntResult(0, errors.New("incr error")))
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/books", bytes.NewBuffer(requestBody))
 	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(w, req)
 
-	// Should still succeed even if cache invalidation fails
-	assert.Equal(t, http.StatusCreated, w.Code)
-	assert.Contains(t, w.Body.String(), "New Book")
-}
-
-func TestCreateBookCacheDelError(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockDB := database.NewMockDatabase(ctrl)
-	mockCache := cache.NewMockCache(ctrl)
-	ctx := context.Background()
-
-	repo := NewBookRepository(mockDB, mockCache, &ctx)
-
-	gin.SetMode(gin.TestMode)
-	r := gin.Default()
-	r.POST("/books", func(c *gin.Context) {
-		c.Set("appCtx", repo)
-		repo.CreateBook(c)
-	})
-
-	inputBook := models.CreateBook{Title: "New Book", Author: "New Author"}
-	requestBody, _ := json.Marshal(inputBook)
-
-	mockDB.EXPECT().Create(gomock.Any()).Return(&gorm.DB{Error: nil})
-
-	// Mock cache keys success but del error
-	mockCache.EXPECT().Keys(ctx, "books_offset_*").Return(redis.NewStringSliceResult([]string{"key1"}, nil))
-	mockCache.EXPECT().Del(ctx, "key1").Return(redis.NewIntResult(0, errors.New("del error")))
-
-	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("POST", "/books", bytes.NewBuffer(requestBody))
-	req.Header.Set("Content-Type", "application/json")
-	r.ServeHTTP(w, req)
-
-	// Should still succeed
+	// Should still succeed even if cache generation bump fails
 	assert.Equal(t, http.StatusCreated, w.Code)
 	assert.Contains(t, w.Body.String(), "New Book")
 }
@@ -384,7 +346,10 @@ func TestFindBooksDatabaseError(t *testing.T) {
 	r := gin.Default()
 	r.GET("/books", repo.FindBooks)
 
-	mockCache.EXPECT().Get(ctx, "books_offset_0_limit_10").Return(redis.NewStringResult("", redis.Nil))
+	gomock.InOrder(
+		mockCache.EXPECT().Get(ctx, booksListCacheGenKey).Return(redis.NewStringResult("", redis.Nil)),
+		mockCache.EXPECT().Get(ctx, booksListDataCacheKey(0, 0, 10)).Return(redis.NewStringResult("", redis.Nil)),
+	)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/books?offset=0&limit=10", nil)
@@ -438,6 +403,73 @@ func TestUpdateBookDatabaseErrorOnUpdates(t *testing.T) {
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Contains(t, w.Body.String(), "Failed to update book")
+}
+
+func TestUpdateBookBumpsListCacheGen(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "update_bump.sqlite")
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&models.Book{}); err != nil {
+		t.Fatal(err)
+	}
+	b := models.Book{Title: "t", Author: "a"}
+	if err := db.Create(&b).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockCache := cache.NewMockCache(ctrl)
+	ctx := context.Background()
+	mockCache.EXPECT().Incr(ctx, booksListCacheGenKey).Return(redis.NewIntResult(1, nil)).Times(1)
+
+	repo := NewBookRepository(&database.GormDatabase{DB: db}, mockCache, &ctx)
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.PUT("/book/:id", repo.UpdateBook)
+
+	body, err := json.Marshal(models.UpdateBook{Title: "n", Author: "n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/book/1", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestDeleteBookBumpsListCacheGen(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "delete_bump.sqlite")
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&models.Book{}); err != nil {
+		t.Fatal(err)
+	}
+	b := models.Book{Title: "del", Author: "me"}
+	if err := db.Create(&b).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockCache := cache.NewMockCache(ctrl)
+	ctx := context.Background()
+	mockCache.EXPECT().Incr(ctx, booksListCacheGenKey).Return(redis.NewIntResult(1, nil)).Times(1)
+
+	repo := NewBookRepository(&database.GormDatabase{DB: db}, mockCache, &ctx)
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.DELETE("/book/:id", repo.DeleteBook)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/book/1", nil)
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusNoContent, w.Code)
 }
 
 func TestDeleteBookInvalidID(t *testing.T) {
@@ -509,7 +541,10 @@ func TestFindBooks(t *testing.T) {
 
 	books := []models.Book{{Title: "Book One", Author: "Author One"}}
 	cachedData, _ := json.Marshal(books)
-	mockCache.EXPECT().Get(ctx, "books_offset_0_limit_10").Return(redis.NewStringResult(string(cachedData), nil))
+	gomock.InOrder(
+		mockCache.EXPECT().Get(ctx, booksListCacheGenKey).Return(redis.NewStringResult("0", nil)),
+		mockCache.EXPECT().Get(ctx, booksListDataCacheKey(0, 0, 10)).Return(redis.NewStringResult(string(cachedData), nil)),
+	)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/books?offset=0&limit=10", nil)
@@ -551,10 +586,7 @@ func TestCreateBook(t *testing.T) {
 		return &gorm.DB{Error: nil}
 	})
 
-	// Set up cache mock to simulate key retrieval and deletion
-	keyPattern := "books_offset_*"
-	mockCache.EXPECT().Keys(ctx, keyPattern).Return(redis.NewStringSliceResult([]string{"books_offset_0_limit_10"}, nil))
-	mockCache.EXPECT().Del(ctx, "books_offset_0_limit_10").Return(redis.NewIntResult(1, nil))
+	mockCache.EXPECT().Incr(ctx, booksListCacheGenKey).Return(redis.NewIntResult(1, nil))
 
 	w := httptest.NewRecorder()
 	req, err := http.NewRequest("POST", "/books", bytes.NewBuffer(requestBody))
@@ -789,19 +821,26 @@ func TestFindBooksSingleflightCoalescesDB(t *testing.T) {
 	repo := NewBookRepository(&database.GormDatabase{DB: db}, mockCache, &ctx)
 
 	const n = 50
-	cacheKey := "books_offset_0_limit_10"
+	dataKey := booksListDataCacheKey(0, 0, 10)
 	var cacheMu sync.Mutex
 	var cachedPayload string
-	mockCache.EXPECT().Get(ctx, cacheKey).DoAndReturn(func(context.Context, string) *redis.StringCmd {
-		cacheMu.Lock()
-		s := cachedPayload
-		cacheMu.Unlock()
-		if s == "" {
+	mockCache.EXPECT().Get(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, key string) *redis.StringCmd {
+		switch key {
+		case booksListCacheGenKey:
 			return redis.NewStringResult("", redis.Nil)
+		case dataKey:
+			cacheMu.Lock()
+			s := cachedPayload
+			cacheMu.Unlock()
+			if s == "" {
+				return redis.NewStringResult("", redis.Nil)
+			}
+			return redis.NewStringResult(s, nil)
+		default:
+			return redis.NewStringResult("", errors.New("unexpected cache Get key"))
 		}
-		return redis.NewStringResult(s, nil)
-	}).MinTimes(n)
-	mockCache.EXPECT().Set(ctx, cacheKey, gomock.Any(), time.Minute).DoAndReturn(func(_ context.Context, _ string, v interface{}, _ time.Duration) *redis.StatusCmd {
+	}).MinTimes(2 * n)
+	mockCache.EXPECT().Set(ctx, dataKey, gomock.Any(), time.Minute).DoAndReturn(func(_ context.Context, _ string, v interface{}, _ time.Duration) *redis.StatusCmd {
 		var b []byte
 		switch x := v.(type) {
 		case []byte:
