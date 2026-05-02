@@ -87,6 +87,12 @@ const docTemplate = `{
                                 "$ref": "#/definitions/models.Book"
                             }
                         }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 }
             },
@@ -136,6 +142,12 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "type": "string"
                         }
@@ -244,6 +256,12 @@ const docTemplate = `{
                         "schema": {
                             "type": "string"
                         }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 }
             },
@@ -285,6 +303,12 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "book not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "type": "string"
                         }

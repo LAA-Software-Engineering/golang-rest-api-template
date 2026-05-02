@@ -19,6 +19,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"gorm.io/driver/sqlite"
 )
 
 func TestNewBookRepository(t *testing.T) {
@@ -107,6 +108,43 @@ func TestFindBooksInvalidLimit(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), "Invalid limit format")
+}
+
+func TestCreateBookDatabaseError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockDB := database.NewMockDatabase(ctrl)
+	mockCache := cache.NewMockCache(ctrl)
+	ctx := context.Background()
+	repo := NewBookRepository(mockDB, mockCache, &ctx)
+
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.POST("/books", func(c *gin.Context) {
+		c.Set("appCtx", repo)
+		repo.CreateBook(c)
+	})
+
+	inputBook := models.CreateBook{Title: "New Book", Author: "New Author"}
+	requestBody, err := json.Marshal(inputBook)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dbErr := errors.New("db create failed")
+	mockDB.EXPECT().Create(gomock.Any()).Return(&gorm.DB{Error: dbErr})
+
+	w := httptest.NewRecorder()
+	req, err := http.NewRequest("POST", "/books", bytes.NewBuffer(requestBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "Failed to create book")
 }
 
 func TestCreateBookBindError(t *testing.T) {
@@ -311,6 +349,91 @@ func TestUpdateBookBindError(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), "error")
+}
+
+func TestFindBooksDatabaseError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	sqlDB, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDB.AutoMigrate(&models.Book{}); err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := sqlDB.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	gdb := &database.GormDatabase{DB: sqlDB}
+	mockCache := cache.NewMockCache(ctrl)
+	ctx := context.Background()
+	repo := NewBookRepository(gdb, mockCache, &ctx)
+
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.GET("/books", repo.FindBooks)
+
+	mockCache.EXPECT().Get(ctx, "books_offset_0_limit_10").Return(redis.NewStringResult("", redis.Nil))
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/books?offset=0&limit=10", nil)
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "Failed to list books")
+}
+
+func TestUpdateBookDatabaseErrorOnUpdates(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&models.Book{}); err != nil {
+		t.Fatal(err)
+	}
+
+	existingBook := models.Book{Title: "Old Title", Author: "Old Author"}
+	if err := db.Create(&existingBook).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.Exec(`
+		CREATE TRIGGER tr_books_abort_update
+		BEFORE UPDATE ON books
+		BEGIN
+			SELECT RAISE(ABORT, 'forced update failure');
+		END
+	`).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	repo := NewBookRepository(&database.GormDatabase{DB: db}, nil, &ctx)
+
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.PUT("/book/:id", repo.UpdateBook)
+
+	updateInput := models.UpdateBook{Title: "New Title", Author: "New Author"}
+	requestBody, err := json.Marshal(updateInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("PUT", "/book/1", bytes.NewBuffer(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "Failed to update book")
 }
 
 func TestDeleteBookInvalidID(t *testing.T) {
@@ -580,8 +703,7 @@ func TestDeleteBook(t *testing.T) {
 		Delete(&existingBook).
 		Return(&gorm.DB{Error: nil}).Times(1)
 
-	// Mock Error method to return nil
-	mockDB.EXPECT().Error().Return(nil).AnyTimes()
+	mockDB.EXPECT().Error().Return(nil).Times(1)
 
 	// Perform the DELETE request
 	w := httptest.NewRecorder()
@@ -590,4 +712,45 @@ func TestDeleteBook(t *testing.T) {
 
 	assert.Equal(t, http.StatusNoContent, w.Code)
 	assert.Empty(t, w.Body.Bytes())
+}
+
+func TestDeleteBookDatabaseErrorOnDelete(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockDB := database.NewMockDatabase(ctrl)
+	ctx := context.Background()
+	repo := NewBookRepository(mockDB, nil, &ctx)
+
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.DELETE("/book/:id", repo.DeleteBook)
+
+	existingBook := models.Book{
+		ID:     1,
+		Title:  "Test Book",
+		Author: "Test Author",
+	}
+
+	mockDB.EXPECT().
+		FirstByID(gomock.Any(), uint(1)).
+		DoAndReturn(func(dest interface{}, id uint) database.Database {
+			if b, ok := dest.(*models.Book); ok {
+				*b = existingBook
+			}
+			return mockDB
+		}).Times(1)
+	mockDB.EXPECT().Error().Return(nil).Times(1)
+
+	delErr := errors.New("delete failed")
+	mockDB.EXPECT().
+		Delete(&existingBook).
+		Return(&gorm.DB{Error: delErr}).Times(1)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/book/1", nil)
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "Failed to delete book")
 }
