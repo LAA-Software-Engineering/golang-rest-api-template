@@ -16,6 +16,35 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
+// booksListCacheGenKey is incremented on book writes so list pagination entries
+// (scoped by generation) go stale without Redis KEYS.
+const booksListCacheGenKey = "v1:books:list_cache_gen"
+
+func booksListDataCacheKey(gen int64, offset, limit int) string {
+	return fmt.Sprintf("books_g%d_offset_%d_limit_%d", gen, offset, limit)
+}
+
+func (r *bookRepository) booksListCacheGeneration() int64 {
+	if r == nil || r.RedisClient == nil || r.Ctx == nil {
+		return 0
+	}
+	n, err := r.RedisClient.Get(*r.Ctx, booksListCacheGenKey).Int64()
+	if err != nil {
+		return 0
+	}
+	if n < 0 {
+		return 0
+	}
+	return n
+}
+
+func (r *bookRepository) bumpBooksListCacheGeneration() {
+	if r == nil || r.RedisClient == nil || r.Ctx == nil {
+		return
+	}
+	_, _ = r.RedisClient.Incr(*r.Ctx, booksListCacheGenKey).Result()
+}
+
 type BookRepository interface {
 	Healthcheck(c *gin.Context)
 	FindBooks(c *gin.Context)
@@ -79,7 +108,7 @@ func (r *bookRepository) Healthcheck(c *gin.Context) {
 
 // FindBooks godoc
 // @Summary Get all books with pagination
-// @Description Get a list of all books with optional pagination. Concurrent cache misses for the same offset/limit are coalesced (singleflight) so only one database read and Redis write runs per cache key.
+// @Description Get a list of all books with optional pagination. List entries are keyed by a monotonic cache generation (no Redis KEYS). Concurrent cache misses for the same offset/limit and generation are coalesced (singleflight) so only one database read and Redis write runs per cache key.
 // @Tags books
 // @Security ApiKeyAuth
 // @Produce json
@@ -108,8 +137,8 @@ func (r *bookRepository) FindBooks(c *gin.Context) {
 		return
 	}
 
-	// Normalized cache key so equivalent pagination (e.g. "0" vs "00") shares one entry and singleflight.
-	cacheKey := fmt.Sprintf("books_offset_%d_limit_%d", offset, limit)
+	gen := r.booksListCacheGeneration()
+	cacheKey := booksListDataCacheKey(gen, offset, limit)
 
 	// Try fetching the data from Redis first
 	cachedBooks, err := r.RedisClient.Get(*r.Ctx, cacheKey).Result()
@@ -195,14 +224,7 @@ func (r *bookRepository) CreateBook(c *gin.Context) {
 		return
 	}
 
-	// Invalidate cache
-	keysPattern := "books_offset_*"
-	keys, err := appCtx.RedisClient.Keys(*appCtx.Ctx, keysPattern).Result()
-	if err == nil {
-		for _, key := range keys {
-			appCtx.RedisClient.Del(*appCtx.Ctx, key)
-		}
-	}
+	appCtx.bumpBooksListCacheGeneration()
 
 	c.JSON(http.StatusCreated, gin.H{"data": book})
 }
@@ -273,6 +295,8 @@ func (r *bookRepository) UpdateBook(c *gin.Context) {
 		return
 	}
 
+	r.bumpBooksListCacheGeneration()
+
 	c.JSON(http.StatusOK, gin.H{"data": book})
 }
 
@@ -306,6 +330,8 @@ func (r *bookRepository) DeleteBook(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete book"})
 		return
 	}
+
+	r.bumpBooksListCacheGeneration()
 
 	c.Status(http.StatusNoContent)
 }

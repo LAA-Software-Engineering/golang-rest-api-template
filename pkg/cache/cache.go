@@ -15,6 +15,7 @@ import (
 type Cache interface {
 	Get(ctx context.Context, key string) *redis.StringCmd
 	Set(ctx context.Context, key string, value interface{}, expiration time.Duration) *redis.StatusCmd
+	Incr(ctx context.Context, key string) *redis.IntCmd
 	Keys(context.Context, string) *redis.StringSliceCmd
 	Del(context.Context, ...string) *redis.IntCmd
 }
