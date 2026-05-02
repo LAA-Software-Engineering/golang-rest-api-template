@@ -310,6 +310,10 @@ paths:
           description: Bad Request
           schema:
             type: string
+        "409":
+          description: Conflict
+          schema:
+            type: string
         "500":
           description: Internal Server Error
           schema:

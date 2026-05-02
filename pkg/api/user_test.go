@@ -9,6 +9,7 @@ import (
 	"golang-rest-api-template/pkg/models"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 
 	"gorm.io/gorm"
@@ -206,5 +207,47 @@ func TestRegisterHandlerDBError(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
-	assert.Contains(t, w.Body.String(), "Could not save user")
+	body := w.Body.String()
+	assert.Contains(t, body, "Could not save user")
+	assert.NotContains(t, body, "ErrInvalidDB")
+}
+
+func TestRegisterHandlerDuplicateUsername(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "register_dup.sqlite")
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&models.User{}); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewUserRepository(&database.GormDatabase{DB: db}, nil)
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.POST("/register", repo.RegisterHandler)
+
+	login := models.LoginUser{Username: "alice", Password: "hunter2!aa"}
+	payload, err := json.Marshal(login)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := func() *http.Request {
+		req, err := http.NewRequest(http.MethodPost, "/register", bytes.NewBuffer(payload))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		return req
+	}
+
+	w1 := httptest.NewRecorder()
+	r.ServeHTTP(w1, req())
+	assert.Equal(t, http.StatusCreated, w1.Code)
+
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, req())
+	assert.Equal(t, http.StatusConflict, w2.Code)
+	assert.Contains(t, w2.Body.String(), "username already taken")
 }
