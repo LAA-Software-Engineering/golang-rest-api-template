@@ -10,7 +10,11 @@ import (
 	"golang-rest-api-template/pkg/models"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -753,4 +757,93 @@ func TestDeleteBookDatabaseErrorOnDelete(t *testing.T) {
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Contains(t, w.Body.String(), "Failed to delete book")
+}
+
+func TestFindBooksSingleflightCoalescesDB(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "singleflight.sqlite")
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&models.Book{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&models.Book{Title: "Coalesced", Author: "Author"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	const cbName = "pkg/api:test_find_books_sf_counter"
+	var selectN atomic.Int32
+	if err := db.Callback().Query().After("gorm:query").Register(cbName, func(*gorm.DB) {
+		selectN.Add(1)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Callback().Query().Remove(cbName) })
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockCache := cache.NewMockCache(ctrl)
+	ctx := context.Background()
+	repo := NewBookRepository(&database.GormDatabase{DB: db}, mockCache, &ctx)
+
+	const n = 50
+	cacheKey := "books_offset_0_limit_10"
+	var cacheMu sync.Mutex
+	var cachedPayload string
+	mockCache.EXPECT().Get(ctx, cacheKey).DoAndReturn(func(context.Context, string) *redis.StringCmd {
+		cacheMu.Lock()
+		s := cachedPayload
+		cacheMu.Unlock()
+		if s == "" {
+			return redis.NewStringResult("", redis.Nil)
+		}
+		return redis.NewStringResult(s, nil)
+	}).MinTimes(n)
+	mockCache.EXPECT().Set(ctx, cacheKey, gomock.Any(), time.Minute).DoAndReturn(func(_ context.Context, _ string, v interface{}, _ time.Duration) *redis.StatusCmd {
+		var b []byte
+		switch x := v.(type) {
+		case []byte:
+			b = x
+		case string:
+			b = []byte(x)
+		default:
+			var err error
+			b, err = json.Marshal(x)
+			if err != nil {
+				return redis.NewStatusResult("", err)
+			}
+		}
+		cacheMu.Lock()
+		cachedPayload = string(b)
+		cacheMu.Unlock()
+		return redis.NewStatusResult("OK", nil)
+	}).Times(1)
+
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.GET("/books", repo.FindBooks)
+
+	var wg sync.WaitGroup
+	wg.Add(n)
+	statusCh := make(chan int, n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/books?offset=0&limit=10", nil)
+			r.ServeHTTP(w, req)
+			statusCh <- w.Code
+		}()
+	}
+	wg.Wait()
+	close(statusCh)
+	for code := range statusCh {
+		assert.Equal(t, http.StatusOK, code)
+	}
+
+	if got := selectN.Load(); got != 1 {
+		t.Fatalf("expected exactly 1 coalesced DB query, got %d", got)
+	}
 }

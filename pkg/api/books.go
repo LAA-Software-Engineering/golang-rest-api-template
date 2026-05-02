@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"golang-rest-api-template/pkg/cache"
 	"golang-rest-api-template/pkg/database"
 	"golang-rest-api-template/pkg/models"
@@ -11,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/sync/singleflight"
 )
 
 type BookRepository interface {
@@ -35,11 +38,19 @@ func parseIDParam(c *gin.Context) (uint, bool) {
 	return uint(id), true
 }
 
+// Sentinel errors for FindBooks singleflight so callers can map failures to HTTP responses.
+var (
+	errListBooksSFDB      = errors.New("listBooks singleflight: database")
+	errListBooksSFMarshal = errors.New("listBooks singleflight: marshal")
+	errListBooksSFRedis   = errors.New("listBooks singleflight: redis set")
+)
+
 // bookRepository holds shared resources like database and Redis client
 type bookRepository struct {
 	DB          database.Database
 	RedisClient cache.Cache
 	Ctx         *context.Context
+	listBooksSF singleflight.Group
 }
 
 // NewAppContext creates a new AppContext
@@ -68,7 +79,7 @@ func (r *bookRepository) Healthcheck(c *gin.Context) {
 
 // FindBooks godoc
 // @Summary Get all books with pagination
-// @Description Get a list of all books with optional pagination
+// @Description Get a list of all books with optional pagination. Concurrent cache misses for the same offset/limit are coalesced (singleflight) so only one database read and Redis write runs per cache key.
 // @Tags books
 // @Security ApiKeyAuth
 // @Produce json
@@ -97,8 +108,8 @@ func (r *bookRepository) FindBooks(c *gin.Context) {
 		return
 	}
 
-	// Create a cache key based on query params
-	cacheKey := "books_offset_" + offsetQuery + "_limit_" + limitQuery
+	// Normalized cache key so equivalent pagination (e.g. "0" vs "00") shares one entry and singleflight.
+	cacheKey := fmt.Sprintf("books_offset_%d_limit_%d", offset, limit)
 
 	// Try fetching the data from Redis first
 	cachedBooks, err := r.RedisClient.Get(*r.Ctx, cacheKey).Result()
@@ -112,24 +123,36 @@ func (r *bookRepository) FindBooks(c *gin.Context) {
 		return
 	}
 
-	// If cache missed, fetch data from the database
-	if err := r.DB.Offset(offset).Limit(limit).Find(&books).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list books"})
+	// If cache missed, coalesce concurrent loads on the same cache key (cache stampede protection).
+	out, err, _ := r.listBooksSF.Do(cacheKey, func() (interface{}, error) {
+		var loaded []models.Book
+		if err := r.DB.Offset(offset).Limit(limit).Find(&loaded).Error; err != nil {
+			return nil, fmt.Errorf("%w: %v", errListBooksSFDB, err)
+		}
+		serializedBooks, err := json.Marshal(loaded)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", errListBooksSFMarshal, err)
+		}
+		if err := r.RedisClient.Set(*r.Ctx, cacheKey, serializedBooks, time.Minute).Err(); err != nil {
+			return nil, fmt.Errorf("%w: %v", errListBooksSFRedis, err)
+		}
+		return loaded, nil
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, errListBooksSFDB):
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list books"})
+		case errors.Is(err, errListBooksSFMarshal):
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to marshal data"})
+		case errors.Is(err, errListBooksSFRedis):
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set cache"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list books"})
+		}
 		return
 	}
 
-	// Serialize books object and store it in Redis
-	serializedBooks, err := json.Marshal(books)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to marshal data"})
-		return
-	}
-	err = r.RedisClient.Set(*r.Ctx, cacheKey, serializedBooks, time.Minute).Err() // Here TTL is set to one hour
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set cache"})
-		return
-	}
-
+	books = out.([]models.Book)
 	c.JSON(http.StatusOK, gin.H{"data": books})
 }
 
