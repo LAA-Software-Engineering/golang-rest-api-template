@@ -95,6 +95,10 @@ paths:
             items:
               $ref: '#/definitions/models.Book'
             type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
       security:
       - ApiKeyAuth: []
       summary: Get all books with pagination
@@ -126,6 +130,10 @@ paths:
           description: Unauthorized
           schema:
             type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
       security:
       - ApiKeyAuth: []
       - JwtAuth: []
@@ -152,6 +160,10 @@ paths:
             type: string
         "404":
           description: book not found
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
           schema:
             type: string
       security:
@@ -217,6 +229,10 @@ paths:
             type: string
         "404":
           description: book not found
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
           schema:
             type: string
       security:
