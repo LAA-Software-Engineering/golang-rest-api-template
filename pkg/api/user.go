@@ -20,7 +20,6 @@ type UserRepository interface {
 	RegisterHandler(c *gin.Context)
 }
 
-// bookRepository holds shared resources like database and Redis client
 type userRepository struct {
 	DB  database.Database
 	Ctx *context.Context
@@ -54,7 +53,7 @@ func (r *userRepository) LoginHandler(c *gin.Context) {
 	var dbUser models.User
 
 	if err := c.ShouldBindJSON(&incoming); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Bad Request"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
