@@ -74,7 +74,9 @@ paths:
       - example
   /books:
     get:
-      description: Get a list of all books with optional pagination
+      description: Get a list of all books with optional pagination. Concurrent cache
+        misses for the same offset/limit are coalesced (singleflight) so only one
+        database read and Redis write runs per cache key.
       parameters:
       - default: 0
         description: Offset for pagination

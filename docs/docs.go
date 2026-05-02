@@ -54,7 +54,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Get a list of all books with optional pagination",
+                "description": "Get a list of all books with optional pagination. Concurrent cache misses for the same offset/limit are coalesced (singleflight) so only one database read and Redis write runs per cache key.",
                 "produces": [
                     "application/json"
                 ],
