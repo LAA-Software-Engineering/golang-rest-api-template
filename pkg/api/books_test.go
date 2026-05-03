@@ -552,35 +552,36 @@ func TestDeleteBookNotFound(t *testing.T) {
 }
 
 func TestFindBooks(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "findbooks_list.sqlite")
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&models.Book{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&models.Book{Title: "Book One", Author: "Author One"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockDB := database.NewMockDatabase(ctrl)
 	mockCache := cache.NewMockCache(ctrl)
-	mockGormDB := database.NewMockDatabase(ctrl) // Correct type for GORM DB operations
+	repo := NewBookRepository(&database.GormDatabase{DB: db}, mockCache)
 
-	repo := NewBookRepository(mockDB, mockCache)
+	gomock.InOrder(
+		mockCache.EXPECT().Get(gomock.Any(), booksListCacheGenKey).Return(redis.NewStringResult("0", nil)),
+		mockCache.EXPECT().Get(gomock.Any(), booksListDataCacheKey(0, 0, 10)).Return(redis.NewStringResult("", redis.Nil)),
+	)
+	mockCache.EXPECT().Set(gomock.Any(), booksListDataCacheKey(0, 0, 10), gomock.Any(), time.Minute).Return(redis.NewStatusResult("OK", nil)).Times(1)
 
-	// Set up Gin
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
 	r.GET("/books", repo.FindBooks)
 
-	// Set up common mock expectations
-	mockGormDB.EXPECT().Find(gomock.Any()).DoAndReturn(func(books *[]models.Book) *gorm.DB {
-		*books = append(*books, models.Book{Title: "New Book", Author: "New Author"})
-		return &gorm.DB{Error: nil} // Assume this is the struct provided by the actual Gorm package
-	}).AnyTimes()
-
-	books := []models.Book{{Title: "Book One", Author: "Author One"}}
-	cachedData, _ := json.Marshal(books)
-	gomock.InOrder(
-		mockCache.EXPECT().Get(gomock.Any(), booksListCacheGenKey).Return(redis.NewStringResult("0", nil)),
-		mockCache.EXPECT().Get(gomock.Any(), booksListDataCacheKey(0, 0, 10)).Return(redis.NewStringResult(string(cachedData), nil)),
-	)
-
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("GET", "/books?offset=0&limit=10", nil)
+	req, _ := http.NewRequest(http.MethodGet, "/books?offset=0&limit=10", nil)
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
