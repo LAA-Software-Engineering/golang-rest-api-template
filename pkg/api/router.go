@@ -21,13 +21,6 @@ import (
 	"golang.org/x/time/rate"
 )
 
-func ContextMiddleware(bookRepository BookRepository) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Set("appCtx", bookRepository)
-		c.Next()
-	}
-}
-
 func NewRouter(logger *zap.Logger, mongoCollection *mongo.Collection, db database.Database, redisClient cache.Cache) *gin.Engine {
 	bookRepository := NewBookRepository(db, redisClient)
 	userRepository := NewUserRepository(db)
@@ -38,7 +31,6 @@ func NewRouter(logger *zap.Logger, mongoCollection *mongo.Collection, db databas
 	}
 	r.Use(middleware.MaxRequestBody(maxRequestBodyBytesFromEnv()))
 	r.Use(middleware.RequestID())
-	r.Use(ContextMiddleware(bookRepository))
 
 	//r.Use(gin.Logger())
 	r.Use(middleware.Logger(logger, mongoCollection))
