@@ -6,7 +6,6 @@ import (
 	"golang-rest-api-template/pkg/auth"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -16,14 +15,13 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func TestMain(m *testing.M) {
+func init() {
 	if err := auth.SetJWTSigningKey(bytes.Repeat([]byte("m"), auth.MinJWTSecretKeyBytes)); err != nil {
 		panic(err)
 	}
 	if err := SetAPISecretKey(bytes.Repeat([]byte("x"), MinAPISecretKeyBytes)); err != nil {
 		panic(err)
 	}
-	os.Exit(m.Run())
 }
 
 func testRouterJWTAuthOnly(t *testing.T) *gin.Engine {
