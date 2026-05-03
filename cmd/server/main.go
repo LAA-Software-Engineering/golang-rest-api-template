@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"golang-rest-api-template/pkg/api"
 	"golang-rest-api-template/pkg/auth"
@@ -8,8 +9,11 @@ import (
 	"golang-rest-api-template/pkg/database"
 	"golang-rest-api-template/pkg/middleware"
 	"log"
+	"net/http"
 	"os"
+	"os/signal"
 	"syscall"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -88,7 +92,40 @@ func main() {
 
 	r := api.NewRouter(logger, mongo, dbWrapper, redisClient)
 
-	if err := r.Run(":8001"); err != nil {
-		log.Fatal(err)
+	const (
+		serverAddr          = ":8001"
+		shutdownGracePeriod = 30 * time.Second
+	)
+	srv := &http.Server{
+		Addr:              serverAddr,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- srv.ListenAndServe()
+	}()
+
+	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	select {
+	case err := <-errCh:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("http server: %v", err)
+		}
+	case <-sigCtx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGracePeriod)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("server shutdown: %v", err)
+		}
+		if err := <-errCh; err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("server exit: %v", err)
+		}
 	}
 }
