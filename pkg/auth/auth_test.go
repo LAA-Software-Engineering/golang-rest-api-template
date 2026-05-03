@@ -3,7 +3,6 @@ package auth
 import (
 	"bytes"
 	"errors"
-	"os"
 	"testing"
 	"time"
 
@@ -11,12 +10,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestMain(m *testing.M) {
-	// Same-length key as production minimum; tests do not read JWT_SECRET_KEY at init.
+func init() {
+	// Same-length key as production minimum; runs even when TestMain is not linked
+	// (e.g. `go test auth_test.go` alone).
 	if err := SetJWTSigningKey(bytes.Repeat([]byte("k"), MinJWTSecretKeyBytes)); err != nil {
 		panic(err)
 	}
-	os.Exit(m.Run())
 }
 
 func TestHashPassword(t *testing.T) {
