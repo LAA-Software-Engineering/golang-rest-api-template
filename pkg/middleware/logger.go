@@ -87,7 +87,6 @@ func Logger(logger *zap.Logger, collection *mongo.Collection) gin.HandlerFunc {
 			zap.Duration("duration", duration),
 			zap.String("ip", c.ClientIP()),
 			zap.String("user-agent", c.Request.UserAgent()),
-			zap.String("errors", c.Errors.ByType(gin.ErrorTypePrivate).String()),
 			zap.String("request_id", requestID),
 		)
 
@@ -98,7 +97,6 @@ func Logger(logger *zap.Logger, collection *mongo.Collection) gin.HandlerFunc {
 			"duration":   duration,
 			"ip":         c.ClientIP(),
 			"user-agent": c.Request.UserAgent(),
-			"errors":     c.Errors.ByType(gin.ErrorTypePrivate).String(),
 			"request_id": requestID,
 		}
 
