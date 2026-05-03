@@ -60,6 +60,25 @@ func TestGormDatabaseError(t *testing.T) {
 	assert.True(t, errors.Is(err, gorm.ErrRecordNotFound))
 }
 
+func TestConfigureConnPoolSQLite(t *testing.T) {
+	db := setupSQLiteDB(t)
+	assert.NoError(t, configureConnPool(db))
+}
+
+func TestGetenvPositiveInt(t *testing.T) {
+	t.Setenv("DATABASE_TEST_GETENV_INT", "42")
+	assert.Equal(t, 42, getenvPositiveInt("DATABASE_TEST_GETENV_INT", 1))
+	t.Setenv("DATABASE_TEST_GETENV_INT", "0")
+	assert.Equal(t, 99, getenvPositiveInt("DATABASE_TEST_GETENV_INT", 99))
+}
+
+func TestGetenvPositiveDuration(t *testing.T) {
+	t.Setenv("DATABASE_TEST_GETENV_DUR", "3m")
+	assert.Equal(t, 3*time.Minute, getenvPositiveDuration("DATABASE_TEST_GETENV_DUR", time.Second))
+	t.Setenv("DATABASE_TEST_GETENV_DUR", "not-a-duration")
+	assert.Equal(t, 5*time.Second, getenvPositiveDuration("DATABASE_TEST_GETENV_DUR", 5*time.Second))
+}
+
 func TestNewDatabaseInvalidPostgresEnv(t *testing.T) {
 	originalSleep := sleep
 	sleep = func(time.Duration) {}
