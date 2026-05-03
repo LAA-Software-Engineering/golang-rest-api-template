@@ -28,7 +28,7 @@ go test ./... -race
 # make up
 
 # optional: Python E2E (see README; requires BASE_URL and API_KEY)
-# pytest tests/
+# pytest -v tests/e2e.py
 ```
 
 ## Checklist

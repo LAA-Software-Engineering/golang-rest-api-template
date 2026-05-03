@@ -214,19 +214,22 @@ pip install -r tests/requirements.txt
 
 #### 3. Set up the environment variables:
 
-E2E tests require `API_SECRET_KEY` (same value the API expects in `X-API-Key`). Optionally set `BASE_URL` (defaults to `http://127.0.0.1:8001/api/v1`).
+E2E tests read **`BASE_URL`** and **`API_KEY`** from the environment only (no baked-in defaults). `API_KEY` must match the value the API accepts in `X-API-Key` (for a Compose-backed local run, that is the same secret as `API_SECRET_KEY` in `.env`).
 
 With a project-root `.env` (as used by Docker Compose), load it before pytest:
 
 ```bash
 set -a && . ./.env && set +a
-export BASE_URL=http://127.0.0.1:8001/api/v1   # optional override
+export BASE_URL=http://127.0.0.1:8001/api/v1
+export API_KEY="$API_SECRET_KEY"
 pytest -v tests/e2e.py
 ```
 
 For a **staging** server, export the same variables with your deployment values.
 
 #### 4. Run the tests:
+
+After `BASE_URL` and `API_KEY` are set (see step 3):
 
 ```bash
 pytest -v tests/e2e.py

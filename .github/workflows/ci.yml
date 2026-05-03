@@ -93,7 +93,8 @@ jobs:
         run: |
           set -euo pipefail
           set -a && . ./.env && set +a
-          export BASE_URL="${BASE_URL:-http://127.0.0.1:8001/api/v1}"
+          export BASE_URL="http://127.0.0.1:8001/api/v1"
+          export API_KEY="${API_SECRET_KEY}"
           pytest -v tests/e2e.py
 
       - name: Show service logs on failure

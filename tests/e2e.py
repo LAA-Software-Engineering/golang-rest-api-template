@@ -15,8 +15,8 @@ def _require_env(name: str) -> str:
     return v
 
 
-BASE_URL = os.environ.get("BASE_URL", "http://127.0.0.1:8001/api/v1").rstrip("/")
-API_KEY = _require_env("API_SECRET_KEY")
+BASE_URL = _require_env("BASE_URL").rstrip("/")
+API_KEY = _require_env("API_KEY")
 headers = {"X-API-Key": API_KEY, "Content-Type": "application/json"}
 
 
