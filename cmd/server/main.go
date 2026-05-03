@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"golang-rest-api-template/pkg/api"
 	"golang-rest-api-template/pkg/auth"
 	"golang-rest-api-template/pkg/cache"
@@ -8,6 +9,7 @@ import (
 	"golang-rest-api-template/pkg/middleware"
 	"log"
 	"os"
+	"syscall"
 
 	"go.uber.org/zap"
 )
@@ -37,6 +39,24 @@ import (
 
 // @externalDocs.description  OpenAPI
 // @externalDocs.url          https://swagger.io/resources/open-api/
+
+// ignorableZapSyncErr reports known-benign Sync failures (e.g. stderr not flushable).
+func ignorableZapSyncErr(err error) bool {
+	if err == nil {
+		return true
+	}
+	if errors.Is(err, syscall.EINVAL) || errors.Is(err, syscall.EBADF) {
+		return true
+	}
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
+		if errors.Is(pathErr.Err, syscall.EINVAL) || errors.Is(pathErr.Err, syscall.EBADF) {
+			return true
+		}
+	}
+	return false
+}
+
 func main() {
 	if err := auth.SetJWTSigningKey([]byte(os.Getenv("JWT_SECRET_KEY"))); err != nil {
 		log.Fatalf("invalid JWT_SECRET_KEY: %v", err)
@@ -52,8 +72,15 @@ func main() {
 	db := database.NewDatabase()
 	dbWrapper := &database.GormDatabase{DB: db}
 	mongo := database.SetupMongoDB()
-	logger, _ := zap.NewProduction()
-	defer logger.Sync()
+	logger, err := zap.NewProduction()
+	if err != nil {
+		log.Fatalf("logger: %v", err)
+	}
+	defer func() {
+		if err := logger.Sync(); err != nil && !ignorableZapSyncErr(err) {
+			log.Printf("logger sync: %v", err)
+		}
+	}()
 
 	// Gin mode comes from GIN_MODE (debug | release | test); see gin.EnvGinMode.
 	// Gin's init already applied os.Getenv("GIN_MODE"); do not override here.
