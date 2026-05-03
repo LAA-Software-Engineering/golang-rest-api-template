@@ -30,11 +30,11 @@ func booksListDataCacheKey(gen int64, offset, limit int) string {
 	return fmt.Sprintf("books_g%d_offset_%d_limit_%d", gen, offset, limit)
 }
 
-func (r *bookRepository) booksListCacheGeneration() int64 {
-	if r == nil || r.RedisClient == nil || r.Ctx == nil {
+func (r *bookRepository) booksListCacheGeneration(ctx context.Context) int64 {
+	if r == nil || r.RedisClient == nil {
 		return 0
 	}
-	n, err := r.RedisClient.Get(*r.Ctx, booksListCacheGenKey).Int64()
+	n, err := r.RedisClient.Get(ctx, booksListCacheGenKey).Int64()
 	if err != nil {
 		return 0
 	}
@@ -44,11 +44,11 @@ func (r *bookRepository) booksListCacheGeneration() int64 {
 	return n
 }
 
-func (r *bookRepository) bumpBooksListCacheGeneration() {
-	if r == nil || r.RedisClient == nil || r.Ctx == nil {
+func (r *bookRepository) bumpBooksListCacheGeneration(ctx context.Context) {
+	if r == nil || r.RedisClient == nil {
 		return
 	}
-	_, _ = r.RedisClient.Incr(*r.Ctx, booksListCacheGenKey).Result()
+	_, _ = r.RedisClient.Incr(ctx, booksListCacheGenKey).Result()
 }
 
 type BookRepository interface {
@@ -84,16 +84,14 @@ var (
 type bookRepository struct {
 	DB          database.Database
 	RedisClient cache.Cache
-	Ctx         *context.Context
 	listBooksSF singleflight.Group
 }
 
-// NewAppContext creates a new AppContext
-func NewBookRepository(db database.Database, redisClient cache.Cache, ctx *context.Context) *bookRepository {
+// NewBookRepository returns a bookRepository backed by db and optional redisClient.
+func NewBookRepository(db database.Database, redisClient cache.Cache) *bookRepository {
 	return &bookRepository{
 		DB:          db,
 		RedisClient: redisClient,
-		Ctx:         ctx,
 	}
 }
 
@@ -155,11 +153,12 @@ func (r *bookRepository) FindBooks(c *gin.Context) {
 		limit = findBooksMaxLimit
 	}
 
-	gen := r.booksListCacheGeneration()
+	reqCtx := c.Request.Context()
+	gen := r.booksListCacheGeneration(reqCtx)
 	cacheKey := booksListDataCacheKey(gen, offset, limit)
 
 	// Try fetching the data from Redis first
-	cachedBooks, err := r.RedisClient.Get(*r.Ctx, cacheKey).Result()
+	cachedBooks, err := r.RedisClient.Get(reqCtx, cacheKey).Result()
 	if err == nil {
 		err := json.Unmarshal([]byte(cachedBooks), &books)
 		if err != nil {
@@ -180,7 +179,7 @@ func (r *bookRepository) FindBooks(c *gin.Context) {
 		if err != nil {
 			return nil, fmt.Errorf("%w: %v", errListBooksSFMarshal, err)
 		}
-		if err := r.RedisClient.Set(*r.Ctx, cacheKey, serializedBooks, time.Minute).Err(); err != nil {
+		if err := r.RedisClient.Set(reqCtx, cacheKey, serializedBooks, time.Minute).Err(); err != nil {
 			return nil, fmt.Errorf("%w: %v", errListBooksSFRedis, err)
 		}
 		return loaded, nil
@@ -232,7 +231,7 @@ func (r *bookRepository) CreateBook(c *gin.Context) {
 		return
 	}
 
-	r.bumpBooksListCacheGeneration()
+	r.bumpBooksListCacheGeneration(c.Request.Context())
 
 	c.JSON(http.StatusCreated, gin.H{"data": book})
 }
@@ -303,7 +302,7 @@ func (r *bookRepository) UpdateBook(c *gin.Context) {
 		return
 	}
 
-	r.bumpBooksListCacheGeneration()
+	r.bumpBooksListCacheGeneration(c.Request.Context())
 
 	c.JSON(http.StatusOK, gin.H{"data": book})
 }
@@ -339,7 +338,7 @@ func (r *bookRepository) DeleteBook(c *gin.Context) {
 		return
 	}
 
-	r.bumpBooksListCacheGeneration()
+	r.bumpBooksListCacheGeneration(c.Request.Context())
 
 	c.Status(http.StatusNoContent)
 }

@@ -33,9 +33,8 @@ func TestNewBookRepository(t *testing.T) {
 
 	mockDB := database.NewMockDatabase(ctrl)
 	mockCache := cache.NewMockCache(ctrl)
-	mockCtx := context.Background()
 
-	repo := NewBookRepository(mockDB, mockCache, &mockCtx)
+	repo := NewBookRepository(mockDB, mockCache)
 
 	assert.NotNil(t, repo, "NewBookRepository should return a non-nil instance of bookRepository")
 	assert.Equal(t, mockDB, repo.DB, "DB should be set to the mock database instance")
@@ -48,9 +47,8 @@ func TestHealthcheck(t *testing.T) {
 
 	mockDB := database.NewMockDatabase(ctrl)
 	mockCache := cache.NewMockCache(ctrl)
-	ctx := context.Background()
 
-	repo := NewBookRepository(mockDB, mockCache, &ctx)
+	repo := NewBookRepository(mockDB, mockCache)
 
 	// Set up Gin
 	gin.SetMode(gin.TestMode)
@@ -77,9 +75,8 @@ func TestFindBooksInvalidOffset(t *testing.T) {
 
 	mockDB := database.NewMockDatabase(ctrl)
 	mockCache := cache.NewMockCache(ctrl)
-	ctx := context.Background()
 
-	repo := NewBookRepository(mockDB, mockCache, &ctx)
+	repo := NewBookRepository(mockDB, mockCache)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -99,9 +96,8 @@ func TestFindBooksInvalidLimit(t *testing.T) {
 
 	mockDB := database.NewMockDatabase(ctrl)
 	mockCache := cache.NewMockCache(ctrl)
-	ctx := context.Background()
 
-	repo := NewBookRepository(mockDB, mockCache, &ctx)
+	repo := NewBookRepository(mockDB, mockCache)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -121,8 +117,7 @@ func TestFindBooksNegativeOffset(t *testing.T) {
 
 	mockDB := database.NewMockDatabase(ctrl)
 	mockCache := cache.NewMockCache(ctrl)
-	ctx := context.Background()
-	repo := NewBookRepository(mockDB, mockCache, &ctx)
+	repo := NewBookRepository(mockDB, mockCache)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -142,8 +137,7 @@ func TestFindBooksLimitBelowOne(t *testing.T) {
 
 	mockDB := database.NewMockDatabase(ctrl)
 	mockCache := cache.NewMockCache(ctrl)
-	ctx := context.Background()
-	repo := NewBookRepository(mockDB, mockCache, &ctx)
+	repo := NewBookRepository(mockDB, mockCache)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -175,14 +169,13 @@ func TestFindBooksLimitCappedAtMax(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	mockCache := cache.NewMockCache(ctrl)
-	ctx := context.Background()
-	repo := NewBookRepository(&database.GormDatabase{DB: db}, mockCache, &ctx)
+	repo := NewBookRepository(&database.GormDatabase{DB: db}, mockCache)
 
 	gomock.InOrder(
-		mockCache.EXPECT().Get(ctx, booksListCacheGenKey).Return(redis.NewStringResult("", redis.Nil)),
-		mockCache.EXPECT().Get(ctx, booksListDataCacheKey(0, 0, findBooksMaxLimit)).Return(redis.NewStringResult("", redis.Nil)),
+		mockCache.EXPECT().Get(gomock.Any(), booksListCacheGenKey).Return(redis.NewStringResult("", redis.Nil)),
+		mockCache.EXPECT().Get(gomock.Any(), booksListDataCacheKey(0, 0, findBooksMaxLimit)).Return(redis.NewStringResult("", redis.Nil)),
 	)
-	mockCache.EXPECT().Set(ctx, booksListDataCacheKey(0, 0, findBooksMaxLimit), gomock.Any(), time.Minute).Return(redis.NewStatusResult("OK", nil)).Times(1)
+	mockCache.EXPECT().Set(gomock.Any(), booksListDataCacheKey(0, 0, findBooksMaxLimit), gomock.Any(), time.Minute).Return(redis.NewStatusResult("OK", nil)).Times(1)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -206,8 +199,7 @@ func TestCreateBookDatabaseError(t *testing.T) {
 
 	mockDB := database.NewMockDatabase(ctrl)
 	mockCache := cache.NewMockCache(ctrl)
-	ctx := context.Background()
-	repo := NewBookRepository(mockDB, mockCache, &ctx)
+	repo := NewBookRepository(mockDB, mockCache)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -240,9 +232,8 @@ func TestCreateBookBindError(t *testing.T) {
 
 	mockDB := database.NewMockDatabase(ctrl)
 	mockCache := cache.NewMockCache(ctrl)
-	ctx := context.Background()
 
-	repo := NewBookRepository(mockDB, mockCache, &ctx)
+	repo := NewBookRepository(mockDB, mockCache)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -263,9 +254,8 @@ func TestCreateBookCacheIncrError(t *testing.T) {
 
 	mockDB := database.NewMockDatabase(ctrl)
 	mockCache := cache.NewMockCache(ctrl)
-	ctx := context.Background()
 
-	repo := NewBookRepository(mockDB, mockCache, &ctx)
+	repo := NewBookRepository(mockDB, mockCache)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -275,7 +265,7 @@ func TestCreateBookCacheIncrError(t *testing.T) {
 	requestBody, _ := json.Marshal(inputBook)
 
 	mockDB.EXPECT().Create(gomock.Any()).Return(&gorm.DB{Error: nil})
-	mockCache.EXPECT().Incr(ctx, booksListCacheGenKey).Return(redis.NewIntResult(0, errors.New("incr error")))
+	mockCache.EXPECT().Incr(gomock.Any(), booksListCacheGenKey).Return(redis.NewIntResult(0, errors.New("incr error")))
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/books", bytes.NewBuffer(requestBody))
@@ -292,8 +282,7 @@ func TestUpdateBookInvalidID(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockDB := database.NewMockDatabase(ctrl)
-	ctx := context.Background()
-	repo := NewBookRepository(mockDB, nil, &ctx)
+	repo := NewBookRepository(mockDB, nil)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -316,8 +305,7 @@ func TestUpdateBookNotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockDB := database.NewMockDatabase(ctrl)
-	ctx := context.Background()
-	repo := NewBookRepository(mockDB, nil, &ctx)
+	repo := NewBookRepository(mockDB, nil)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -345,8 +333,7 @@ func TestUpdateBookBindError(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockDB := database.NewMockDatabase(ctrl)
-	ctx := context.Background()
-	repo := NewBookRepository(mockDB, nil, &ctx)
+	repo := NewBookRepository(mockDB, nil)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -392,16 +379,15 @@ func TestFindBooksDatabaseError(t *testing.T) {
 
 	gdb := &database.GormDatabase{DB: sqlDB}
 	mockCache := cache.NewMockCache(ctrl)
-	ctx := context.Background()
-	repo := NewBookRepository(gdb, mockCache, &ctx)
+	repo := NewBookRepository(gdb, mockCache)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
 	r.GET("/books", repo.FindBooks)
 
 	gomock.InOrder(
-		mockCache.EXPECT().Get(ctx, booksListCacheGenKey).Return(redis.NewStringResult("", redis.Nil)),
-		mockCache.EXPECT().Get(ctx, booksListDataCacheKey(0, 0, 10)).Return(redis.NewStringResult("", redis.Nil)),
+		mockCache.EXPECT().Get(gomock.Any(), booksListCacheGenKey).Return(redis.NewStringResult("", redis.Nil)),
+		mockCache.EXPECT().Get(gomock.Any(), booksListDataCacheKey(0, 0, 10)).Return(redis.NewStringResult("", redis.Nil)),
 	)
 
 	w := httptest.NewRecorder()
@@ -436,8 +422,7 @@ func TestUpdateBookDatabaseErrorOnUpdates(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx := context.Background()
-	repo := NewBookRepository(&database.GormDatabase{DB: db}, nil, &ctx)
+	repo := NewBookRepository(&database.GormDatabase{DB: db}, nil)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -475,10 +460,9 @@ func TestUpdateBookBumpsListCacheGen(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	mockCache := cache.NewMockCache(ctrl)
-	ctx := context.Background()
-	mockCache.EXPECT().Incr(ctx, booksListCacheGenKey).Return(redis.NewIntResult(1, nil)).Times(1)
+	mockCache.EXPECT().Incr(gomock.Any(), booksListCacheGenKey).Return(redis.NewIntResult(1, nil)).Times(1)
 
-	repo := NewBookRepository(&database.GormDatabase{DB: db}, mockCache, &ctx)
+	repo := NewBookRepository(&database.GormDatabase{DB: db}, mockCache)
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
 	r.PUT("/book/:id", repo.UpdateBook)
@@ -511,10 +495,9 @@ func TestDeleteBookBumpsListCacheGen(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	mockCache := cache.NewMockCache(ctrl)
-	ctx := context.Background()
-	mockCache.EXPECT().Incr(ctx, booksListCacheGenKey).Return(redis.NewIntResult(1, nil)).Times(1)
+	mockCache.EXPECT().Incr(gomock.Any(), booksListCacheGenKey).Return(redis.NewIntResult(1, nil)).Times(1)
 
-	repo := NewBookRepository(&database.GormDatabase{DB: db}, mockCache, &ctx)
+	repo := NewBookRepository(&database.GormDatabase{DB: db}, mockCache)
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
 	r.DELETE("/book/:id", repo.DeleteBook)
@@ -530,8 +513,7 @@ func TestDeleteBookInvalidID(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockDB := database.NewMockDatabase(ctrl)
-	ctx := context.Background()
-	repo := NewBookRepository(mockDB, nil, &ctx)
+	repo := NewBookRepository(mockDB, nil)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -550,8 +532,7 @@ func TestDeleteBookNotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockDB := database.NewMockDatabase(ctrl)
-	ctx := context.Background()
-	repo := NewBookRepository(mockDB, nil, &ctx)
+	repo := NewBookRepository(mockDB, nil)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -577,9 +558,8 @@ func TestFindBooks(t *testing.T) {
 	mockDB := database.NewMockDatabase(ctrl)
 	mockCache := cache.NewMockCache(ctrl)
 	mockGormDB := database.NewMockDatabase(ctrl) // Correct type for GORM DB operations
-	ctx := context.Background()
 
-	repo := NewBookRepository(mockDB, mockCache, &ctx)
+	repo := NewBookRepository(mockDB, mockCache)
 
 	// Set up Gin
 	gin.SetMode(gin.TestMode)
@@ -595,8 +575,8 @@ func TestFindBooks(t *testing.T) {
 	books := []models.Book{{Title: "Book One", Author: "Author One"}}
 	cachedData, _ := json.Marshal(books)
 	gomock.InOrder(
-		mockCache.EXPECT().Get(ctx, booksListCacheGenKey).Return(redis.NewStringResult("0", nil)),
-		mockCache.EXPECT().Get(ctx, booksListDataCacheKey(0, 0, 10)).Return(redis.NewStringResult(string(cachedData), nil)),
+		mockCache.EXPECT().Get(gomock.Any(), booksListCacheGenKey).Return(redis.NewStringResult("0", nil)),
+		mockCache.EXPECT().Get(gomock.Any(), booksListDataCacheKey(0, 0, 10)).Return(redis.NewStringResult(string(cachedData), nil)),
 	)
 
 	w := httptest.NewRecorder()
@@ -613,9 +593,8 @@ func TestCreateBook(t *testing.T) {
 
 	mockDB := database.NewMockDatabase(ctrl)
 	mockCache := cache.NewMockCache(ctrl)
-	ctx := context.Background()
 
-	repo := NewBookRepository(mockDB, mockCache, &ctx)
+	repo := NewBookRepository(mockDB, mockCache)
 
 	// Set up Gin
 	gin.SetMode(gin.TestMode)
@@ -635,7 +614,7 @@ func TestCreateBook(t *testing.T) {
 		return &gorm.DB{Error: nil}
 	})
 
-	mockCache.EXPECT().Incr(ctx, booksListCacheGenKey).Return(redis.NewIntResult(1, nil))
+	mockCache.EXPECT().Incr(gomock.Any(), booksListCacheGenKey).Return(redis.NewIntResult(1, nil))
 
 	w := httptest.NewRecorder()
 	req, err := http.NewRequest("POST", "/books", bytes.NewBuffer(requestBody))
@@ -657,8 +636,7 @@ func TestFindBook(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockDB := database.NewMockDatabase(ctrl)
-	ctx := context.Background()
-	repo := NewBookRepository(mockDB, nil, &ctx)
+	repo := NewBookRepository(mockDB, nil)
 
 	// Set up Gin
 	gin.SetMode(gin.TestMode)
@@ -712,8 +690,7 @@ func TestFindBookNotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockDB := database.NewMockDatabase(ctrl)
-	ctx := context.Background()
-	repo := NewBookRepository(mockDB, nil, &ctx)
+	repo := NewBookRepository(mockDB, nil)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -737,8 +714,7 @@ func TestFindBookRejectsInvalidID(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockDB := database.NewMockDatabase(ctrl)
-	ctx := context.Background()
-	repo := NewBookRepository(mockDB, nil, &ctx)
+	repo := NewBookRepository(mockDB, nil)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -758,8 +734,7 @@ func TestDeleteBook(t *testing.T) {
 
 	// Create mock for the database
 	mockDB := database.NewMockDatabase(ctrl)
-	ctx := context.Background()
-	repo := NewBookRepository(mockDB, nil, &ctx)
+	repo := NewBookRepository(mockDB, nil)
 
 	// Set up Gin for testing
 	gin.SetMode(gin.TestMode)
@@ -804,8 +779,7 @@ func TestDeleteBookDatabaseErrorOnDelete(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockDB := database.NewMockDatabase(ctrl)
-	ctx := context.Background()
-	repo := NewBookRepository(mockDB, nil, &ctx)
+	repo := NewBookRepository(mockDB, nil)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -866,14 +840,13 @@ func TestFindBooksSingleflightCoalescesDB(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockCache := cache.NewMockCache(ctrl)
-	ctx := context.Background()
-	repo := NewBookRepository(&database.GormDatabase{DB: db}, mockCache, &ctx)
+	repo := NewBookRepository(&database.GormDatabase{DB: db}, mockCache)
 
 	const n = 50
 	dataKey := booksListDataCacheKey(0, 0, 10)
 	var cacheMu sync.Mutex
 	var cachedPayload string
-	mockCache.EXPECT().Get(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, key string) *redis.StringCmd {
+	mockCache.EXPECT().Get(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, key string) *redis.StringCmd {
 		switch key {
 		case booksListCacheGenKey:
 			return redis.NewStringResult("", redis.Nil)
@@ -889,7 +862,7 @@ func TestFindBooksSingleflightCoalescesDB(t *testing.T) {
 			return redis.NewStringResult("", errors.New("unexpected cache Get key"))
 		}
 	}).MinTimes(2 * n)
-	mockCache.EXPECT().Set(ctx, dataKey, gomock.Any(), time.Minute).DoAndReturn(func(_ context.Context, _ string, v interface{}, _ time.Duration) *redis.StatusCmd {
+	mockCache.EXPECT().Set(gomock.Any(), dataKey, gomock.Any(), time.Minute).DoAndReturn(func(_ context.Context, _ string, v interface{}, _ time.Duration) *redis.StatusCmd {
 		var b []byte
 		switch x := v.(type) {
 		case []byte:
@@ -961,13 +934,12 @@ func TestFindBooksLeadingZerosShareListCache(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	mockCache := cache.NewMockCache(ctrl)
-	ctx := context.Background()
-	repo := NewBookRepository(&database.GormDatabase{DB: db}, mockCache, &ctx)
+	repo := NewBookRepository(&database.GormDatabase{DB: db}, mockCache)
 
 	dataKey := booksListDataCacheKey(0, 0, 10)
 	var cacheMu sync.Mutex
 	var cachedPayload string
-	mockCache.EXPECT().Get(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, key string) *redis.StringCmd {
+	mockCache.EXPECT().Get(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, key string) *redis.StringCmd {
 		switch key {
 		case booksListCacheGenKey:
 			return redis.NewStringResult("", redis.Nil)
@@ -983,7 +955,7 @@ func TestFindBooksLeadingZerosShareListCache(t *testing.T) {
 			return redis.NewStringResult("", errors.New("unexpected cache Get key"))
 		}
 	}).MinTimes(4)
-	mockCache.EXPECT().Set(ctx, dataKey, gomock.Any(), time.Minute).DoAndReturn(func(_ context.Context, _ string, v interface{}, _ time.Duration) *redis.StatusCmd {
+	mockCache.EXPECT().Set(gomock.Any(), dataKey, gomock.Any(), time.Minute).DoAndReturn(func(_ context.Context, _ string, v interface{}, _ time.Duration) *redis.StatusCmd {
 		var b []byte
 		switch x := v.(type) {
 		case []byte:

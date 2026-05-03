@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"errors"
 	"golang-rest-api-template/pkg/auth"
 	"golang-rest-api-template/pkg/database"
@@ -21,8 +20,7 @@ type UserRepository interface {
 }
 
 type userRepository struct {
-	DB  database.Database
-	Ctx *context.Context
+	DB database.Database
 }
 
 // registerUsernameConflict detects unique violations on user registration.
@@ -44,11 +42,8 @@ func registerUsernameConflict(err error) bool {
 	return false
 }
 
-func NewUserRepository(db database.Database, ctx *context.Context) *userRepository {
-	return &userRepository{
-		DB:  db,
-		Ctx: ctx,
-	}
+func NewUserRepository(db database.Database) *userRepository {
+	return &userRepository{DB: db}
 }
 
 // @BasePath /api/v1
