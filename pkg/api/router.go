@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"os"
 	"strconv"
 	"strings"
@@ -29,9 +28,9 @@ func ContextMiddleware(bookRepository BookRepository) gin.HandlerFunc {
 	}
 }
 
-func NewRouter(logger *zap.Logger, mongoCollection *mongo.Collection, db database.Database, redisClient cache.Cache, ctx *context.Context) *gin.Engine {
-	bookRepository := NewBookRepository(db, redisClient, ctx)
-	userRepository := NewUserRepository(db, ctx)
+func NewRouter(logger *zap.Logger, mongoCollection *mongo.Collection, db database.Database, redisClient cache.Cache) *gin.Engine {
+	bookRepository := NewBookRepository(db, redisClient)
+	userRepository := NewUserRepository(db)
 
 	r := gin.Default()
 	if err := configureTrustedProxies(r); err != nil {

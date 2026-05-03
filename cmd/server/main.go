@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"golang-rest-api-template/pkg/api"
 	"golang-rest-api-template/pkg/auth"
 	"golang-rest-api-template/pkg/cache"
@@ -53,7 +52,6 @@ func main() {
 	db := database.NewDatabase()
 	dbWrapper := &database.GormDatabase{DB: db}
 	mongo := database.SetupMongoDB()
-	ctx := context.Background()
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
 
@@ -61,7 +59,7 @@ func main() {
 	// Gin's init already applied os.Getenv("GIN_MODE"); do not override here.
 	// Use GIN_MODE=release in production so Security/XSS middleware run (pkg/api/router.go).
 
-	r := api.NewRouter(logger, mongo, dbWrapper, redisClient, &ctx)
+	r := api.NewRouter(logger, mongo, dbWrapper, redisClient)
 
 	if err := r.Run(":8001"); err != nil {
 		log.Fatal(err)

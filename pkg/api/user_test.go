@@ -2,7 +2,6 @@ package api
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"golang-rest-api-template/pkg/auth"
 	"golang-rest-api-template/pkg/database"
@@ -25,9 +24,8 @@ func TestNewUserRepository(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockDB := database.NewMockDatabase(ctrl)
-	mockCtx := context.Background()
 
-	repo := NewUserRepository(mockDB, &mockCtx)
+	repo := NewUserRepository(mockDB)
 
 	assert.NotNil(t, repo, "NewUserRepository should return a non-nil instance of userRepository")
 	assert.Equal(t, mockDB, repo.DB, "DB should be set to the mock database instance")
@@ -41,7 +39,7 @@ func TestLoginHandlerSuccess(t *testing.T) {
 	}
 	db.AutoMigrate(&models.User{})
 
-	repo := NewUserRepository(&database.GormDatabase{DB: db}, nil)
+	repo := NewUserRepository(&database.GormDatabase{DB: db})
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -68,8 +66,7 @@ func TestLoginHandlerInvalidJSON(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockDB := database.NewMockDatabase(ctrl)
-	ctx := context.Background()
-	repo := NewUserRepository(mockDB, &ctx)
+	repo := NewUserRepository(mockDB)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -89,8 +86,7 @@ func TestLoginHandlerBindValidationLoginUser(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockDB := database.NewMockDatabase(ctrl)
-	ctx := context.Background()
-	repo := NewUserRepository(mockDB, &ctx)
+	repo := NewUserRepository(mockDB)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -115,7 +111,7 @@ func TestLoginHandlerUserNotFound(t *testing.T) {
 	}
 	db.AutoMigrate(&models.User{})
 
-	repo := NewUserRepository(&database.GormDatabase{DB: db}, nil)
+	repo := NewUserRepository(&database.GormDatabase{DB: db})
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -141,7 +137,7 @@ func TestLoginHandlerWrongPassword(t *testing.T) {
 	}
 	db.AutoMigrate(&models.User{})
 
-	repo := NewUserRepository(&database.GormDatabase{DB: db}, nil)
+	repo := NewUserRepository(&database.GormDatabase{DB: db})
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -168,8 +164,7 @@ func TestRegisterHandlerInvalidJSON(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockDB := database.NewMockDatabase(ctrl)
-	ctx := context.Background()
-	repo := NewUserRepository(mockDB, &ctx)
+	repo := NewUserRepository(mockDB)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -189,8 +184,7 @@ func TestRegisterHandlerDBError(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockDB := database.NewMockDatabase(ctrl)
-	ctx := context.Background()
-	repo := NewUserRepository(mockDB, &ctx)
+	repo := NewUserRepository(mockDB)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -222,7 +216,7 @@ func TestRegisterHandlerDuplicateUsername(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	repo := NewUserRepository(&database.GormDatabase{DB: db}, nil)
+	repo := NewUserRepository(&database.GormDatabase{DB: db})
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
 	r.POST("/register", repo.RegisterHandler)
