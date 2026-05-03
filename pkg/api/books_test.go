@@ -211,10 +211,7 @@ func TestCreateBookDatabaseError(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.POST("/books", func(c *gin.Context) {
-		c.Set("appCtx", repo)
-		repo.CreateBook(c)
-	})
+	r.POST("/books", repo.CreateBook)
 
 	inputBook := models.CreateBook{Title: "New Book", Author: "New Author"}
 	requestBody, err := json.Marshal(inputBook)
@@ -249,10 +246,7 @@ func TestCreateBookBindError(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.POST("/books", func(c *gin.Context) {
-		c.Set("appCtx", repo)
-		repo.CreateBook(c)
-	})
+	r.POST("/books", repo.CreateBook)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/books", bytes.NewBufferString("invalid json"))
@@ -261,31 +255,6 @@ func TestCreateBookBindError(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), "error")
-}
-
-func TestCreateBookMissingAppCtx(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockDB := database.NewMockDatabase(ctrl)
-	mockCache := cache.NewMockCache(ctrl)
-	ctx := context.Background()
-
-	repo := NewBookRepository(mockDB, mockCache, &ctx)
-
-	gin.SetMode(gin.TestMode)
-	r := gin.Default()
-	r.POST("/books", repo.CreateBook) // Not setting appCtx
-
-	inputBook := models.CreateBook{Title: "New Book", Author: "New Author"}
-	requestBody, _ := json.Marshal(inputBook)
-
-	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("POST", "/books", bytes.NewBuffer(requestBody))
-	req.Header.Set("Content-Type", "application/json")
-	r.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
 func TestCreateBookCacheIncrError(t *testing.T) {
@@ -300,10 +269,7 @@ func TestCreateBookCacheIncrError(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.POST("/books", func(c *gin.Context) {
-		c.Set("appCtx", repo)
-		repo.CreateBook(c)
-	})
+	r.POST("/books", repo.CreateBook)
 
 	inputBook := models.CreateBook{Title: "New Book", Author: "New Author"}
 	requestBody, _ := json.Marshal(inputBook)
@@ -654,11 +620,7 @@ func TestCreateBook(t *testing.T) {
 	// Set up Gin
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.POST("/books", func(c *gin.Context) {
-		// Set the appCtx in the Gin context
-		c.Set("appCtx", repo)
-		repo.CreateBook(c)
-	})
+	r.POST("/books", repo.CreateBook)
 
 	// Example data for the test
 	inputBook := models.CreateBook{Title: "New Book", Author: "New Author"}

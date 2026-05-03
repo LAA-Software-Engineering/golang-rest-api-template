@@ -218,16 +218,6 @@ func (r *bookRepository) FindBooks(c *gin.Context) {
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /books [post]
 func (r *bookRepository) CreateBook(c *gin.Context) {
-	appCtxInterface, exists := c.Get("appCtx")
-	if !exists {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-		return
-	}
-	appCtx, ok := appCtxInterface.(*bookRepository)
-	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-		return
-	}
 	var input models.CreateBook
 
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -237,12 +227,12 @@ func (r *bookRepository) CreateBook(c *gin.Context) {
 
 	book := models.Book{Title: input.Title, Author: input.Author}
 
-	if err := appCtx.DB.Create(&book).Error; err != nil {
+	if err := r.DB.Create(&book).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create book"})
 		return
 	}
 
-	appCtx.bumpBooksListCacheGeneration()
+	r.bumpBooksListCacheGeneration()
 
 	c.JSON(http.StatusCreated, gin.H{"data": book})
 }
