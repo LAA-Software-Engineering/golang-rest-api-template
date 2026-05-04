@@ -11,13 +11,11 @@ on:
     paths-ignore:
       - "**/*.md"
       - "CODEOWNERS"
-      - "Makefile"
   pull_request:
     branches: [ "main" ]
     paths-ignore:
       - "**/*.md"
       - "CODEOWNERS"
-      - "Makefile"
 
 jobs:
   mod-tidy:
