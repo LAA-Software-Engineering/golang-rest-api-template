@@ -14,6 +14,9 @@ bin/
 coverage.out
 coverage.html
 
+# Built helper binary (use `go run ./scripts/generate_key.go`)
+scripts/generate_key
+
 # Dependency directories (remove the comment below to include it)
 # vendor/
 __pycache__
