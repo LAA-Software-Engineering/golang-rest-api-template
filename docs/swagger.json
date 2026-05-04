@@ -1,8 +1,8 @@
 {
     "swagger": "2.0",
     "info": {
-        "description": "This is a sample server celler server.",
-        "title": "Swagger Example API",
+        "description": "Go/Gin REST API template: books CRUD, register/login, Redis-backed list cache, Postgres via GORM, Mongo access logs, rate limiting, and Swagger.",
+        "title": "golang-rest-api-template",
         "termsOfService": "http://swagger.io/terms/",
         "contact": {
             "name": "API Support",

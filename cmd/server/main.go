@@ -18,9 +18,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// @title           Swagger Example API
+// @title           golang-rest-api-template
 // @version         1.0
-// @description     This is a sample server celler server.
+// @description     Go/Gin REST API template: books CRUD, register/login, Redis-backed list cache, Postgres via GORM, Mongo access logs, rate limiting, and Swagger.
 // @termsOfService  http://swagger.io/terms/
 
 // @contact.name   API Support

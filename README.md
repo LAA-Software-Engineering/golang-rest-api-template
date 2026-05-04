@@ -22,13 +22,19 @@ This repository provides a template for building a RESTful API using Go with fea
 
 ```
 golang-rest-api-template/
-├── bin
-│  └── server
+├── .github
+│  ├── dependabot.yml
+│  ├── pull_request_template.md
+│  └── workflows
+│     └── ci.yml
 ├── cmd
 │  └── server
 │     └── main.go
 ├── docker-compose.yml
 ├── Dockerfile
+├── .dockerignore
+├── .env.example
+├── .golangci.yml
 ├── docs
 │  ├── docs.go
 │  ├── swagger.json
@@ -41,33 +47,50 @@ golang-rest-api-template/
 │  ├── api
 │  │  ├── books.go
 │  │  ├── books_test.go
+│  │  ├── book_routes_auth_test.go
+│  │  ├── main_test.go
 │  │  ├── router.go
-│  │  └── user.go
+│  │  ├── router_trusted_proxies_test.go
+│  │  ├── user.go
+│  │  └── user_test.go
 │  ├── auth
 │  │  ├── auth.go
 │  │  └── auth_test.go
 │  ├── cache
 │  │  ├── cache.go
 │  │  ├── cache_mock.go
-│  │  └── cache_test.go
+│  │  ├── cache_test.go
+│  │  └── redis_env_test.go
 │  ├── database
 │  │  ├── db.go
 │  │  ├── db_mock.go
-│  │  └── db_test.go
+│  │  ├── db_test.go
+│  │  ├── mongo.go
+│  │  └── mongo_test.go
 │  ├── middleware
 │  │  ├── api_key.go
+│  │  ├── api_key_test.go
 │  │  ├── authenticateJWT.go
+│  │  ├── authenticateJWT_test.go
 │  │  ├── cors.go
+│  │  ├── logger.go
+│  │  ├── max_body.go
+│  │  ├── max_body_test.go
 │  │  ├── rate_limit.go
+│  │  ├── request_id.go
+│  │  ├── request_id_test.go
 │  │  ├── security.go
 │  │  └── xss.go
 │  └── models
 │     ├── book.go
-│     └── user.go
+│     ├── user.go
+│     └── user_test.go
 ├── README.md
-├── .env.example
 ├── scripts
 │  └── generate_key.go
+├── tests
+│  ├── e2e.py
+│  └── requirements.txt
 └── vendor
 ```
 
@@ -153,6 +176,7 @@ http://localhost:8001/swagger/index.html
 
 ### Endpoints
 
+- `GET /api/v1/`: Health check (no `X-API-Key`; same path CI uses for readiness).
 - `GET /api/v1/books`: Get all books.
 - `GET /api/v1/books/:id`: Get a single book by ID.
 - `POST /api/v1/books`: Create a new book.
@@ -160,10 +184,11 @@ http://localhost:8001/swagger/index.html
 - `DELETE /api/v1/books/:id`: Delete a book.
 - `POST /api/v1/login`: Login.
 - `POST /api/v1/register`: Register a new user.
+- `GET /swagger/*`: Swagger UI (no `X-API-Key`).
 
 ### Authentication
 
-All versioned routes expect the `X-API-Key` header matching `API_SECRET_KEY` (service-to-service gate).
+Under **`/api/v1`**, every route **except** `GET /api/v1/` (health) requires the **`X-API-Key`** header matching **`API_SECRET_KEY`** (service-to-service gate).
 
 Book **mutations** (`POST`, `PUT`, and `DELETE` on `/api/v1/books` and `/api/v1/books/:id`) also require a valid user JWT in `Authorization: Bearer <token>` (obtain via `/api/v1/register` and `/api/v1/login`). Book **reads** (`GET` list and `GET` by id) require the API key only.
 
