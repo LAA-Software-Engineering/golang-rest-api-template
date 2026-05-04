@@ -5,7 +5,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - 8001:8001
+      - "127.0.0.1:8001:8001"
     depends_on:
       db:
         condition: service_healthy
@@ -28,14 +28,14 @@ services:
       GIN_MODE: release
 
   db:
-    image: postgres:14.1-alpine
+    image: postgres:14.17-alpine
     restart: always
     container_name: dockerPostgres
     volumes:
-      # Official postgres image stores cluster data under PGDATA (default /var/lib/postgresql/data).
-      - .dbdata:/var/lib/postgresql/data
+      # Named volume (aligned with mongo_data); avoids bind-mounting ./.dbdata into the image context.
+      - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5435:5435"
+      - "127.0.0.1:5435:5435"
     environment:
       - POSTGRES_DB=go_app_dev
       - POSTGRES_USER=docker
@@ -49,9 +49,9 @@ services:
       start_period: 10s
 
   redis:
-    image: "redis:alpine"
+    image: redis:7.4.2-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     container_name: dockerRedis
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -61,12 +61,12 @@ services:
       start_period: 5s
 
   mongo:
-    image: mongo
+    image: mongo:7.0.15
     container_name: dockerMongo
     volumes:
       - mongo_data:/data/db
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
     restart: always
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
@@ -76,4 +76,5 @@ services:
       start_period: 10s
 
 volumes:
-  mongo_data: # Declare the volume for MongoDB data
+  mongo_data:
+  postgres_data:

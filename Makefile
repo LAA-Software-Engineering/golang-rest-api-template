@@ -46,4 +46,5 @@ clean:
 	docker rm dockerPostgres
 	docker rm dockerRedis
 	docker image rm golang-rest-api-template-backend
+	# Legacy bind-mount dir (Compose now uses named volume postgres_data).
 	rm -rf .dbdata
