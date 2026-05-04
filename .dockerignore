@@ -1,0 +1,26 @@
+# Git and local env
+.git
+.gitignore
+.env
+.env.*
+
+# Local DB data and caches (never belong in the image build context)
+.dbdata
+**/.dbdata
+
+# Coverage / IDE
+coverage.out
+coverage.html
+.cursor
+.idea
+.vscode
+
+# Python (e2e / tooling)
+__pycache__
+.pytest_cache
+.venv
+venv
+
+# Vendored deps — image uses `go mod download` in the builder stage
+vendor/
+

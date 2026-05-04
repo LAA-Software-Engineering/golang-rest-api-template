@@ -20,6 +20,10 @@ FROM debian:bookworm-slim AS runtime
 
 WORKDIR /app
 
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends ca-certificates curl \
+	&& rm -rf /var/lib/apt/lists/*
+
 RUN useradd --system --no-create-home --uid 10001 appuser
 
 COPY --from=builder /out/server /app/server
@@ -29,6 +33,9 @@ ENV GIN_MODE=release
 
 USER appuser
 
-EXPOSE 8080
+EXPOSE 8001
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+	CMD curl -fsS http://127.0.0.1:8001/api/v1/ >/dev/null || exit 1
 
 CMD ["/app/server"]
