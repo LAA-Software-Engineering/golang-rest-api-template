@@ -1,14 +1,13 @@
+# Pin swag to the same version as Dockerfile (github.com/swaggo/swag/cmd/swag@v1.16.4).
 setup:
-	go get -u github.com/swaggo/swag/cmd/swag
-	go install github.com/swaggo/swag/cmd/swag@latest
+	go install github.com/swaggo/swag/cmd/swag@v1.16.4
 	swag init -g ./cmd/server/main.go -o ./docs
-	go get -u github.com/swaggo/gin-swagger
-	go get -u github.com/swaggo/files
 
 build-docker:
 	docker compose build --no-cache
 
-# Run API against local Docker DBs. Requires `.env` with JWT_SECRET_KEY and API_SECRET_KEY (see .env.example).
+# Run API against local Docker DBs. Requires `.env` for secrets and DB settings (see .env.example).
+# Only overrides service hostnames to localhost for containers started outside Compose.
 # Optional: set GIN_MODE=release in `.env` for the same security middleware as Docker Compose.
 run-local:
 	docker start dockerPostgres
@@ -17,8 +16,7 @@ run-local:
 	test -f .env || { echo >&2 "Missing .env — copy .env.example to .env and set secrets (>=32 bytes each)."; exit 1; }
 	set -euo pipefail; \
 	set -a && . ./.env && set +a; \
-	export REDIS_HOST=localhost POSTGRES_HOST=localhost \
-		POSTGRES_DB=go_app_dev POSTGRES_USER=docker POSTGRES_PASSWORD=password POSTGRES_PORT=5435; \
+	export REDIS_HOST=localhost POSTGRES_HOST=localhost; \
 	go run cmd/server/main.go
 
 up:
