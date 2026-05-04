@@ -2,7 +2,6 @@ package database
 
 import (
 	"errors"
-	"os"
 	"testing"
 	"time"
 
@@ -84,45 +83,11 @@ func TestNewDatabaseInvalidPostgresEnv(t *testing.T) {
 	sleep = func(time.Duration) {}
 	defer func() { sleep = originalSleep }()
 
-	oldHost, hadHost := os.LookupEnv("POSTGRES_HOST")
-	oldDB, hadDB := os.LookupEnv("POSTGRES_DB")
-	oldUser, hadUser := os.LookupEnv("POSTGRES_USER")
-	oldPass, hadPass := os.LookupEnv("POSTGRES_PASSWORD")
-	oldPort, hadPort := os.LookupEnv("POSTGRES_PORT")
-
-	defer func() {
-		if hadHost {
-			os.Setenv("POSTGRES_HOST", oldHost)
-		} else {
-			os.Unsetenv("POSTGRES_HOST")
-		}
-		if hadDB {
-			os.Setenv("POSTGRES_DB", oldDB)
-		} else {
-			os.Unsetenv("POSTGRES_DB")
-		}
-		if hadUser {
-			os.Setenv("POSTGRES_USER", oldUser)
-		} else {
-			os.Unsetenv("POSTGRES_USER")
-		}
-		if hadPass {
-			os.Setenv("POSTGRES_PASSWORD", oldPass)
-		} else {
-			os.Unsetenv("POSTGRES_PASSWORD")
-		}
-		if hadPort {
-			os.Setenv("POSTGRES_PORT", oldPort)
-		} else {
-			os.Unsetenv("POSTGRES_PORT")
-		}
-	}()
-
-	os.Setenv("POSTGRES_HOST", "127.0.0.1")
-	os.Setenv("POSTGRES_DB", "invalid_db")
-	os.Setenv("POSTGRES_USER", "invalid_user")
-	os.Setenv("POSTGRES_PASSWORD", "invalid_pass")
-	os.Setenv("POSTGRES_PORT", "1")
+	t.Setenv("POSTGRES_HOST", "127.0.0.1")
+	t.Setenv("POSTGRES_DB", "invalid_db")
+	t.Setenv("POSTGRES_USER", "invalid_user")
+	t.Setenv("POSTGRES_PASSWORD", "invalid_pass")
+	t.Setenv("POSTGRES_PORT", "1")
 
 	db := NewDatabase()
 	assert.Nil(t, db)

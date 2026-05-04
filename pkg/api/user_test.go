@@ -37,7 +37,9 @@ func TestLoginHandlerSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	db.AutoMigrate(&models.User{})
+	if err := db.AutoMigrate(&models.User{}); err != nil {
+		t.Fatal(err)
+	}
 
 	repo := NewUserRepository(&database.GormDatabase{DB: db})
 
@@ -109,7 +111,9 @@ func TestLoginHandlerUserNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	db.AutoMigrate(&models.User{})
+	if err := db.AutoMigrate(&models.User{}); err != nil {
+		t.Fatal(err)
+	}
 
 	repo := NewUserRepository(&database.GormDatabase{DB: db})
 
@@ -135,7 +139,9 @@ func TestLoginHandlerWrongPassword(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	db.AutoMigrate(&models.User{})
+	if err := db.AutoMigrate(&models.User{}); err != nil {
+		t.Fatal(err)
+	}
 
 	repo := NewUserRepository(&database.GormDatabase{DB: db})
 
