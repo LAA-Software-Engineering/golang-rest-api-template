@@ -122,6 +122,31 @@ func TestJWTAuthRejectsBadRequests(t *testing.T) {
 		t.Fatalf("none token: %v", err)
 	}
 
+	expiredClaims := &auth.Claims{
+		Username: "expired-user",
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-time.Hour)),
+		},
+	}
+	expiredTok := jwt.NewWithClaims(jwt.SigningMethodHS256, expiredClaims)
+	expiredStr, err := expiredTok.SignedString(key)
+	if err != nil {
+		t.Fatalf("expired HS256 token: %v", err)
+	}
+
+	wrongKey := bytes.Repeat([]byte("n"), auth.MinJWTSecretKeyBytes)
+	wrongSigClaims := &auth.Claims{
+		Username: "wrong-sig-user",
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		},
+	}
+	wrongSigTok := jwt.NewWithClaims(jwt.SigningMethodHS256, wrongSigClaims)
+	wrongSigStr, err := wrongSigTok.SignedString(wrongKey)
+	if err != nil {
+		t.Fatalf("wrong-signature HS256 token: %v", err)
+	}
+
 	tests := []struct {
 		name       string
 		authz      string
@@ -154,6 +179,18 @@ func TestJWTAuthRejectsBadRequests(t *testing.T) {
 		{
 			name:       "none algorithm",
 			authz:      "Bearer " + noneStr,
+			wantStatus: http.StatusUnauthorized,
+			wantErrSub: "Invalid token",
+		},
+		{
+			name:       "expired HS256",
+			authz:      "Bearer " + expiredStr,
+			wantStatus: http.StatusUnauthorized,
+			wantErrSub: "Invalid token",
+		},
+		{
+			name:       "HS256 wrong signing key",
+			authz:      "Bearer " + wrongSigStr,
 			wantStatus: http.StatusUnauthorized,
 			wantErrSub: "Invalid token",
 		},
