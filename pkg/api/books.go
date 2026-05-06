@@ -19,8 +19,9 @@ const (
 	findBooksMaxLimit = 100
 )
 
-// BookRepository is the HTTP surface for book routes (Gin handlers).
-type BookRepository interface {
+// BookHandler defines Gin handlers for book routes (HTTP layer only; persistence
+// lives in pkg/repository).
+type BookHandler interface {
 	Healthcheck(c *gin.Context)
 	FindBooks(c *gin.Context)
 	CreateBook(c *gin.Context)
@@ -29,13 +30,13 @@ type BookRepository interface {
 	DeleteBook(c *gin.Context)
 }
 
-type bookRepository struct {
+type bookHandler struct {
 	svc *service.BookService
 }
 
-// NewBookRepository wires persistence and cache into book HTTP handlers.
-func NewBookRepository(store repository.BookPersistence, redisClient cache.Cache) *bookRepository {
-	return &bookRepository{svc: service.NewBookService(store, redisClient)}
+// NewBookHandler wires persistence and cache into book HTTP handlers.
+func NewBookHandler(store repository.BookPersistence, redisClient cache.Cache) *bookHandler {
+	return &bookHandler{svc: service.NewBookService(store, redisClient)}
 }
 
 func parseIDParam(c *gin.Context) (uint, bool) {
@@ -90,7 +91,7 @@ func parseOffsetLimit(c *gin.Context) (offset, limit int, ok bool) {
 // @Produce json
 // @Success 200 {string} ok
 // @Router / [get]
-func (r *bookRepository) Healthcheck(c *gin.Context) {
+func (h *bookHandler) Healthcheck(c *gin.Context) {
 	c.JSON(http.StatusOK, "ok")
 }
 
@@ -106,12 +107,12 @@ func (r *bookRepository) Healthcheck(c *gin.Context) {
 // @Failure 400 {string} string "Bad Request"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /books [get]
-func (r *bookRepository) FindBooks(c *gin.Context) {
+func (h *bookHandler) FindBooks(c *gin.Context) {
 	offset, limit, ok := parseOffsetLimit(c)
 	if !ok {
 		return
 	}
-	books, err := r.svc.ListBooks(c.Request.Context(), offset, limit)
+	books, err := h.svc.ListBooks(c.Request.Context(), offset, limit)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrListBooksDB):
@@ -144,13 +145,13 @@ func (r *bookRepository) FindBooks(c *gin.Context) {
 // @Failure 401 {string} string "Unauthorized"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /books [post]
-func (r *bookRepository) CreateBook(c *gin.Context) {
+func (h *bookHandler) CreateBook(c *gin.Context) {
 	var input models.CreateBook
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	book, err := r.svc.CreateBook(c.Request.Context(), input.Title, input.Author)
+	book, err := h.svc.CreateBook(c.Request.Context(), input.Title, input.Author)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create book"})
 		return
@@ -168,12 +169,12 @@ func (r *bookRepository) CreateBook(c *gin.Context) {
 // @Success 200 {object} models.Book "Successfully retrieved book"
 // @Failure 404 {string} string "Book not found"
 // @Router /books/{id} [get]
-func (r *bookRepository) FindBook(c *gin.Context) {
+func (h *bookHandler) FindBook(c *gin.Context) {
 	id, ok := parseIDParam(c)
 	if !ok {
 		return
 	}
-	book, err := r.svc.GetBook(c.Request.Context(), id)
+	book, err := h.svc.GetBook(c.Request.Context(), id)
 	if err != nil {
 		if repository.IsBookNotFound(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "book not found"})
@@ -201,7 +202,7 @@ func (r *bookRepository) FindBook(c *gin.Context) {
 // @Failure 404 {string} string "book not found"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /books/{id} [put]
-func (r *bookRepository) UpdateBook(c *gin.Context) {
+func (h *bookHandler) UpdateBook(c *gin.Context) {
 	var input models.UpdateBook
 	id, ok := parseIDParam(c)
 	if !ok {
@@ -211,7 +212,7 @@ func (r *bookRepository) UpdateBook(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	book, err := r.svc.UpdateBook(c.Request.Context(), id, input.Title, input.Author)
+	book, err := h.svc.UpdateBook(c.Request.Context(), id, input.Title, input.Author)
 	if err != nil {
 		if repository.IsBookNotFound(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "book not found"})
@@ -236,12 +237,12 @@ func (r *bookRepository) UpdateBook(c *gin.Context) {
 // @Failure 404 {string} string "book not found"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /books/{id} [delete]
-func (r *bookRepository) DeleteBook(c *gin.Context) {
+func (h *bookHandler) DeleteBook(c *gin.Context) {
 	id, ok := parseIDParam(c)
 	if !ok {
 		return
 	}
-	if err := r.svc.DeleteBook(c.Request.Context(), id); err != nil {
+	if err := h.svc.DeleteBook(c.Request.Context(), id); err != nil {
 		if repository.IsBookNotFound(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "book not found"})
 			return

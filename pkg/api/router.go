@@ -24,8 +24,8 @@ import (
 
 // NewRouter builds the Gin engine with middleware, Swagger, and API routes.
 func NewRouter(logger *zap.Logger, mongoCollection *mongo.Collection, db *gorm.DB, redisClient cache.Cache) *gin.Engine {
-	bookRepository := NewBookRepository(repository.NewGormBookStore(db), redisClient)
-	userRepository := NewUserRepository(repository.NewGormUserStore(db))
+	books := NewBookHandler(repository.NewGormBookStore(db), redisClient)
+	users := NewUserHandler(repository.NewGormUserStore(db))
 
 	r := gin.Default()
 	if err := configureTrustedProxies(r); err != nil {
@@ -48,15 +48,15 @@ func NewRouter(logger *zap.Logger, mongoCollection *mongo.Collection, db *gorm.D
 	docs.SwaggerInfo.BasePath = "/api/v1"
 	v1 := r.Group("/api/v1")
 	{
-		v1.GET("/", bookRepository.Healthcheck)
-		v1.GET("/books", middleware.APIKeyAuth(), bookRepository.FindBooks)
-		v1.POST("/books", middleware.APIKeyAuth(), middleware.JWTAuth(), bookRepository.CreateBook)
-		v1.GET("/books/:id", middleware.APIKeyAuth(), bookRepository.FindBook)
-		v1.PUT("/books/:id", middleware.APIKeyAuth(), middleware.JWTAuth(), bookRepository.UpdateBook)
-		v1.DELETE("/books/:id", middleware.APIKeyAuth(), middleware.JWTAuth(), bookRepository.DeleteBook)
+		v1.GET("/", books.Healthcheck)
+		v1.GET("/books", middleware.APIKeyAuth(), books.FindBooks)
+		v1.POST("/books", middleware.APIKeyAuth(), middleware.JWTAuth(), books.CreateBook)
+		v1.GET("/books/:id", middleware.APIKeyAuth(), books.FindBook)
+		v1.PUT("/books/:id", middleware.APIKeyAuth(), middleware.JWTAuth(), books.UpdateBook)
+		v1.DELETE("/books/:id", middleware.APIKeyAuth(), middleware.JWTAuth(), books.DeleteBook)
 
-		v1.POST("/login", middleware.APIKeyAuth(), userRepository.LoginHandler)
-		v1.POST("/register", middleware.APIKeyAuth(), userRepository.RegisterHandler)
+		v1.POST("/login", middleware.APIKeyAuth(), users.LoginHandler)
+		v1.POST("/register", middleware.APIKeyAuth(), users.RegisterHandler)
 	}
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerfiles.Handler))
 

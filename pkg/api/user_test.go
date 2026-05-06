@@ -19,15 +19,15 @@ import (
 	"gorm.io/driver/sqlite"
 )
 
-func TestNewUserRepository(t *testing.T) {
+func TestNewUserHandler(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	mockUsers := repository.NewMockUserPersistence(ctrl)
 
-	repo := NewUserRepository(mockUsers)
+	h := NewUserHandler(mockUsers)
 
-	assert.NotNil(t, repo, "NewUserRepository should return a non-nil instance of userRepository")
+	assert.NotNil(t, h, "NewUserHandler should return a non-nil *userHandler")
 }
 
 func TestLoginHandlerSuccess(t *testing.T) {
@@ -40,11 +40,11 @@ func TestLoginHandlerSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	repo := NewUserRepository(repository.NewGormUserStore(db))
+	h := NewUserHandler(repository.NewGormUserStore(db))
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.POST("/login", repo.LoginHandler)
+	r.POST("/login", h.LoginHandler)
 
 	hashedPassword, _ := auth.HashPassword("password")
 	user := models.User{Username: "testuser", Password: hashedPassword}
@@ -67,11 +67,11 @@ func TestLoginHandlerInvalidJSON(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockUsers := repository.NewMockUserPersistence(ctrl)
-	repo := NewUserRepository(mockUsers)
+	h := NewUserHandler(mockUsers)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.POST("/login", repo.LoginHandler)
+	r.POST("/login", h.LoginHandler)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/login", bytes.NewBufferString("invalid json"))
@@ -87,11 +87,11 @@ func TestLoginHandlerBindValidationLoginUser(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockUsers := repository.NewMockUserPersistence(ctrl)
-	repo := NewUserRepository(mockUsers)
+	h := NewUserHandler(mockUsers)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.POST("/login", repo.LoginHandler)
+	r.POST("/login", h.LoginHandler)
 
 	// Missing password — binding is on models.LoginUser, not models.User
 	body, _ := json.Marshal(map[string]string{"username": "onlyuser"})
@@ -114,11 +114,11 @@ func TestLoginHandlerUserNotFound(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	repo := NewUserRepository(repository.NewGormUserStore(db))
+	h := NewUserHandler(repository.NewGormUserStore(db))
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.POST("/login", repo.LoginHandler)
+	r.POST("/login", h.LoginHandler)
 
 	loginUser := models.LoginUser{Username: "nonexistent", Password: "password"}
 	requestBody, _ := json.Marshal(loginUser)
@@ -142,11 +142,11 @@ func TestLoginHandlerWrongPassword(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	repo := NewUserRepository(repository.NewGormUserStore(db))
+	h := NewUserHandler(repository.NewGormUserStore(db))
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.POST("/login", repo.LoginHandler)
+	r.POST("/login", h.LoginHandler)
 
 	hashedPassword, _ := auth.HashPassword("correctpassword")
 	user := models.User{Username: "testuser", Password: hashedPassword}
@@ -169,11 +169,11 @@ func TestRegisterHandlerInvalidJSON(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockUsers := repository.NewMockUserPersistence(ctrl)
-	repo := NewUserRepository(mockUsers)
+	h := NewUserHandler(mockUsers)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.POST("/register", repo.RegisterHandler)
+	r.POST("/register", h.RegisterHandler)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/register", bytes.NewBufferString("invalid json"))
@@ -189,11 +189,11 @@ func TestRegisterHandlerDBError(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockUsers := repository.NewMockUserPersistence(ctrl)
-	repo := NewUserRepository(mockUsers)
+	h := NewUserHandler(mockUsers)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.POST("/register", repo.RegisterHandler)
+	r.POST("/register", h.RegisterHandler)
 
 	loginUser := models.LoginUser{Username: "newuser", Password: "password"}
 	requestBody, _ := json.Marshal(loginUser)
@@ -221,10 +221,10 @@ func TestRegisterHandlerDuplicateUsername(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	repo := NewUserRepository(repository.NewGormUserStore(db))
+	h := NewUserHandler(repository.NewGormUserStore(db))
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.POST("/register", repo.RegisterHandler)
+	r.POST("/register", h.RegisterHandler)
 
 	login := models.LoginUser{Username: "alice", Password: "hunter2!aa"}
 	payload, err := json.Marshal(login)

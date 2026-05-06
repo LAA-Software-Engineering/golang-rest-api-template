@@ -65,15 +65,15 @@ golang-rest-api-template/
 │  │  └── redis_env_test.go
 │  ├── database
 │  │  ├── db.go
-│  │  ├── db_mock.go
 │  │  ├── db_test.go
+│  │  ├── doc.go
 │  │  ├── mongo.go
 │  │  └── mongo_test.go
 │  ├── middleware
 │  │  ├── api_key.go
 │  │  ├── api_key_test.go
-│  │  ├── authenticateJWT.go
-│  │  ├── authenticateJWT_test.go
+│  │  ├── jwt_auth.go
+│  │  ├── jwt_auth_test.go
 │  │  ├── cors.go
 │  │  ├── logger.go
 │  │  ├── max_body.go

@@ -28,16 +28,16 @@ import (
 	"gorm.io/driver/sqlite"
 )
 
-func TestNewBookRepository(t *testing.T) {
+func TestNewBookHandler(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	mockStore := repository.NewMockBookPersistence(ctrl)
 	mockCache := cache.NewMockCache(ctrl)
 
-	repo := NewBookRepository(mockStore, mockCache)
+	h := NewBookHandler(mockStore, mockCache)
 
-	assert.NotNil(t, repo, "NewBookRepository should return a non-nil instance of bookRepository")
+	assert.NotNil(t, h, "NewBookHandler should return a non-nil *bookHandler")
 }
 
 func TestHealthcheck(t *testing.T) {
@@ -47,7 +47,7 @@ func TestHealthcheck(t *testing.T) {
 	mockStore := repository.NewMockBookPersistence(ctrl)
 	mockCache := cache.NewMockCache(ctrl)
 
-	repo := NewBookRepository(mockStore, mockCache)
+	h := NewBookHandler(mockStore, mockCache)
 
 	// Set up Gin
 	gin.SetMode(gin.TestMode)
@@ -55,7 +55,7 @@ func TestHealthcheck(t *testing.T) {
 	c, _ := gin.CreateTestContext(recorder)
 
 	// Call the actual Healthcheck method
-	repo.Healthcheck(c)
+	h.Healthcheck(c)
 
 	// Check the response
 	assert.Equal(t, http.StatusOK, recorder.Code)
@@ -75,11 +75,11 @@ func TestFindBooksInvalidOffset(t *testing.T) {
 	mockStore := repository.NewMockBookPersistence(ctrl)
 	mockCache := cache.NewMockCache(ctrl)
 
-	repo := NewBookRepository(mockStore, mockCache)
+	h := NewBookHandler(mockStore, mockCache)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.GET("/books", repo.FindBooks)
+	r.GET("/books", h.FindBooks)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/books?offset=abc&limit=10", nil)
@@ -96,11 +96,11 @@ func TestFindBooksInvalidLimit(t *testing.T) {
 	mockStore := repository.NewMockBookPersistence(ctrl)
 	mockCache := cache.NewMockCache(ctrl)
 
-	repo := NewBookRepository(mockStore, mockCache)
+	h := NewBookHandler(mockStore, mockCache)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.GET("/books", repo.FindBooks)
+	r.GET("/books", h.FindBooks)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/books?offset=0&limit=xyz", nil)
@@ -116,11 +116,11 @@ func TestFindBooksNegativeOffset(t *testing.T) {
 
 	mockStore := repository.NewMockBookPersistence(ctrl)
 	mockCache := cache.NewMockCache(ctrl)
-	repo := NewBookRepository(mockStore, mockCache)
+	h := NewBookHandler(mockStore, mockCache)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.GET("/books", repo.FindBooks)
+	r.GET("/books", h.FindBooks)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/books?offset=-1&limit=10", nil)
@@ -136,11 +136,11 @@ func TestFindBooksLimitBelowOne(t *testing.T) {
 
 	mockStore := repository.NewMockBookPersistence(ctrl)
 	mockCache := cache.NewMockCache(ctrl)
-	repo := NewBookRepository(mockStore, mockCache)
+	h := NewBookHandler(mockStore, mockCache)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.GET("/books", repo.FindBooks)
+	r.GET("/books", h.FindBooks)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/books?offset=0&limit=0", nil)
@@ -168,7 +168,7 @@ func TestFindBooksLimitCappedAtMax(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	mockCache := cache.NewMockCache(ctrl)
-	repo := NewBookRepository(repository.NewGormBookStore(db), mockCache)
+	h := NewBookHandler(repository.NewGormBookStore(db), mockCache)
 
 	gomock.InOrder(
 		mockCache.EXPECT().Get(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewStringResult("", redis.Nil)),
@@ -178,7 +178,7 @@ func TestFindBooksLimitCappedAtMax(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.GET("/books", repo.FindBooks)
+	r.GET("/books", h.FindBooks)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/books?offset=0&limit=500", nil)
@@ -198,11 +198,11 @@ func TestCreateBookDatabaseError(t *testing.T) {
 
 	mockStore := repository.NewMockBookPersistence(ctrl)
 	mockCache := cache.NewMockCache(ctrl)
-	repo := NewBookRepository(mockStore, mockCache)
+	h := NewBookHandler(mockStore, mockCache)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.POST("/books", repo.CreateBook)
+	r.POST("/books", h.CreateBook)
 
 	inputBook := models.CreateBook{Title: "New Book", Author: "New Author"}
 	requestBody, err := json.Marshal(inputBook)
@@ -232,11 +232,11 @@ func TestCreateBookBindError(t *testing.T) {
 	mockStore := repository.NewMockBookPersistence(ctrl)
 	mockCache := cache.NewMockCache(ctrl)
 
-	repo := NewBookRepository(mockStore, mockCache)
+	h := NewBookHandler(mockStore, mockCache)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.POST("/books", repo.CreateBook)
+	r.POST("/books", h.CreateBook)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/books", bytes.NewBufferString("invalid json"))
@@ -254,11 +254,11 @@ func TestCreateBookCacheIncrError(t *testing.T) {
 	mockStore := repository.NewMockBookPersistence(ctrl)
 	mockCache := cache.NewMockCache(ctrl)
 
-	repo := NewBookRepository(mockStore, mockCache)
+	h := NewBookHandler(mockStore, mockCache)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.POST("/books", repo.CreateBook)
+	r.POST("/books", h.CreateBook)
 
 	inputBook := models.CreateBook{Title: "New Book", Author: "New Author"}
 	requestBody, _ := json.Marshal(inputBook)
@@ -281,11 +281,11 @@ func TestUpdateBookInvalidID(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := repository.NewMockBookPersistence(ctrl)
-	repo := NewBookRepository(mockStore, nil)
+	h := NewBookHandler(mockStore, nil)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.PUT("/book/:id", repo.UpdateBook)
+	r.PUT("/book/:id", h.UpdateBook)
 
 	updateInput := models.UpdateBook{Title: "New Title", Author: "New Author"}
 	requestBody, _ := json.Marshal(updateInput)
@@ -304,11 +304,11 @@ func TestUpdateBookNotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := repository.NewMockBookPersistence(ctrl)
-	repo := NewBookRepository(mockStore, nil)
+	h := NewBookHandler(mockStore, nil)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.PUT("/book/:id", repo.UpdateBook)
+	r.PUT("/book/:id", h.UpdateBook)
 
 	updateInput := models.UpdateBook{Title: "New Title", Author: "New Author"}
 	requestBody, _ := json.Marshal(updateInput)
@@ -329,11 +329,11 @@ func TestUpdateBookBindError(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := repository.NewMockBookPersistence(ctrl)
-	repo := NewBookRepository(mockStore, nil)
+	h := NewBookHandler(mockStore, nil)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.PUT("/book/:id", repo.UpdateBook)
+	r.PUT("/book/:id", h.UpdateBook)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("PUT", "/book/1", bytes.NewBufferString("invalid json"))
@@ -366,11 +366,11 @@ func TestFindBooksDatabaseError(t *testing.T) {
 	}
 
 	mockCache := cache.NewMockCache(ctrl)
-	repo := NewBookRepository(repository.NewGormBookStore(sqlDB), mockCache)
+	h := NewBookHandler(repository.NewGormBookStore(sqlDB), mockCache)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.GET("/books", repo.FindBooks)
+	r.GET("/books", h.FindBooks)
 
 	gomock.InOrder(
 		mockCache.EXPECT().Get(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewStringResult("", redis.Nil)),
@@ -409,11 +409,11 @@ func TestUpdateBookDatabaseErrorOnUpdates(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	repo := NewBookRepository(repository.NewGormBookStore(db), nil)
+	h := NewBookHandler(repository.NewGormBookStore(db), nil)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.PUT("/book/:id", repo.UpdateBook)
+	r.PUT("/book/:id", h.UpdateBook)
 
 	updateInput := models.UpdateBook{Title: "New Title", Author: "New Author"}
 	requestBody, err := json.Marshal(updateInput)
@@ -449,10 +449,10 @@ func TestUpdateBookBumpsListCacheGen(t *testing.T) {
 	mockCache := cache.NewMockCache(ctrl)
 	mockCache.EXPECT().Incr(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewIntResult(1, nil)).Times(1)
 
-	repo := NewBookRepository(repository.NewGormBookStore(db), mockCache)
+	h := NewBookHandler(repository.NewGormBookStore(db), mockCache)
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.PUT("/book/:id", repo.UpdateBook)
+	r.PUT("/book/:id", h.UpdateBook)
 
 	body, err := json.Marshal(models.UpdateBook{Title: "n", Author: "n"})
 	if err != nil {
@@ -484,10 +484,10 @@ func TestDeleteBookBumpsListCacheGen(t *testing.T) {
 	mockCache := cache.NewMockCache(ctrl)
 	mockCache.EXPECT().Incr(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewIntResult(1, nil)).Times(1)
 
-	repo := NewBookRepository(repository.NewGormBookStore(db), mockCache)
+	h := NewBookHandler(repository.NewGormBookStore(db), mockCache)
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.DELETE("/book/:id", repo.DeleteBook)
+	r.DELETE("/book/:id", h.DeleteBook)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodDelete, "/book/1", nil)
@@ -500,11 +500,11 @@ func TestDeleteBookInvalidID(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := repository.NewMockBookPersistence(ctrl)
-	repo := NewBookRepository(mockStore, nil)
+	h := NewBookHandler(mockStore, nil)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.DELETE("/book/:id", repo.DeleteBook)
+	r.DELETE("/book/:id", h.DeleteBook)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest(http.MethodDelete, "/book/xyz", nil)
@@ -519,11 +519,11 @@ func TestDeleteBookNotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := repository.NewMockBookPersistence(ctrl)
-	repo := NewBookRepository(mockStore, nil)
+	h := NewBookHandler(mockStore, nil)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.DELETE("/book/:id", repo.DeleteBook)
+	r.DELETE("/book/:id", h.DeleteBook)
 
 	mockStore.EXPECT().DeleteByID(uint(1)).Return(gorm.ErrRecordNotFound)
 
@@ -552,7 +552,7 @@ func TestFindBooks(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockCache := cache.NewMockCache(ctrl)
-	repo := NewBookRepository(repository.NewGormBookStore(db), mockCache)
+	h := NewBookHandler(repository.NewGormBookStore(db), mockCache)
 
 	gomock.InOrder(
 		mockCache.EXPECT().Get(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewStringResult("0", nil)),
@@ -562,7 +562,7 @@ func TestFindBooks(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.GET("/books", repo.FindBooks)
+	r.GET("/books", h.FindBooks)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest(http.MethodGet, "/books?offset=0&limit=10", nil)
@@ -579,12 +579,12 @@ func TestCreateBook(t *testing.T) {
 	mockStore := repository.NewMockBookPersistence(ctrl)
 	mockCache := cache.NewMockCache(ctrl)
 
-	repo := NewBookRepository(mockStore, mockCache)
+	h := NewBookHandler(mockStore, mockCache)
 
 	// Set up Gin
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.POST("/books", repo.CreateBook)
+	r.POST("/books", h.CreateBook)
 
 	// Example data for the test
 	inputBook := models.CreateBook{Title: "New Book", Author: "New Author"}
@@ -617,12 +617,12 @@ func TestFindBook(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := repository.NewMockBookPersistence(ctrl)
-	repo := NewBookRepository(mockStore, nil)
+	h := NewBookHandler(mockStore, nil)
 
 	// Set up Gin
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.GET("/book/:id", repo.FindBook)
+	r.GET("/book/:id", h.FindBook)
 
 	// Prepare test data
 	expectedBook := models.Book{
@@ -655,11 +655,11 @@ func TestFindBookNotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := repository.NewMockBookPersistence(ctrl)
-	repo := NewBookRepository(mockStore, nil)
+	h := NewBookHandler(mockStore, nil)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.GET("/book/:id", repo.FindBook)
+	r.GET("/book/:id", h.FindBook)
 
 	mockStore.EXPECT().FirstByID(uint(1)).Return(nil, gorm.ErrRecordNotFound)
 
@@ -676,11 +676,11 @@ func TestFindBookRejectsInvalidID(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := repository.NewMockBookPersistence(ctrl)
-	repo := NewBookRepository(mockStore, nil)
+	h := NewBookHandler(mockStore, nil)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.GET("/book/:id", repo.FindBook)
+	r.GET("/book/:id", h.FindBook)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/book/1%20OR%201=1", nil)
@@ -696,12 +696,12 @@ func TestDeleteBook(t *testing.T) {
 
 	// Create mock for the database
 	mockStore := repository.NewMockBookPersistence(ctrl)
-	repo := NewBookRepository(mockStore, nil)
+	h := NewBookHandler(mockStore, nil)
 
 	// Set up Gin for testing
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.DELETE("/book/:id", repo.DeleteBook)
+	r.DELETE("/book/:id", h.DeleteBook)
 
 	mockStore.EXPECT().DeleteByID(uint(1)).Return(nil).Times(1)
 
@@ -718,11 +718,11 @@ func TestDeleteBookDatabaseErrorOnDelete(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := repository.NewMockBookPersistence(ctrl)
-	repo := NewBookRepository(mockStore, nil)
+	h := NewBookHandler(mockStore, nil)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.DELETE("/book/:id", repo.DeleteBook)
+	r.DELETE("/book/:id", h.DeleteBook)
 
 	delErr := errors.New("delete failed")
 	mockStore.EXPECT().DeleteByID(uint(1)).Return(delErr).Times(1)
@@ -761,7 +761,7 @@ func TestFindBooksSingleflightCoalescesDB(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockCache := cache.NewMockCache(ctrl)
-	repo := NewBookRepository(repository.NewGormBookStore(db), mockCache)
+	h := NewBookHandler(repository.NewGormBookStore(db), mockCache)
 
 	const n = 50
 	dataKey := service.BooksListDataCacheKey(0, 0, 10)
@@ -805,7 +805,7 @@ func TestFindBooksSingleflightCoalescesDB(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.GET("/books", repo.FindBooks)
+	r.GET("/books", h.FindBooks)
 
 	var wg sync.WaitGroup
 	wg.Add(n)
@@ -855,7 +855,7 @@ func TestFindBooksLeadingZerosShareListCache(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	mockCache := cache.NewMockCache(ctrl)
-	repo := NewBookRepository(repository.NewGormBookStore(db), mockCache)
+	h := NewBookHandler(repository.NewGormBookStore(db), mockCache)
 
 	dataKey := service.BooksListDataCacheKey(0, 0, 10)
 	var cacheMu sync.Mutex
@@ -898,7 +898,7 @@ func TestFindBooksLeadingZerosShareListCache(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.GET("/books", repo.FindBooks)
+	r.GET("/books", h.FindBooks)
 
 	w1 := httptest.NewRecorder()
 	r.ServeHTTP(w1, httptest.NewRequest(http.MethodGet, "/books?offset=00&limit=010", nil))
