@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"golang-rest-api-template/pkg/cache"
-	"golang-rest-api-template/pkg/database"
 	"golang-rest-api-template/pkg/middleware"
+	"golang-rest-api-template/pkg/repository"
 
 	docs "golang-rest-api-template/docs"
 
@@ -17,13 +17,15 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 
 	"golang.org/x/time/rate"
 )
 
-func NewRouter(logger *zap.Logger, mongoCollection *mongo.Collection, db database.Database, redisClient cache.Cache) *gin.Engine {
-	bookRepository := NewBookRepository(db, redisClient)
-	userRepository := NewUserRepository(db)
+// NewRouter builds the Gin engine with middleware, Swagger, and API routes.
+func NewRouter(logger *zap.Logger, mongoCollection *mongo.Collection, db *gorm.DB, redisClient cache.Cache) *gin.Engine {
+	bookRepository := NewBookRepository(repository.NewGormBookStore(db), redisClient)
+	userRepository := NewUserRepository(repository.NewGormUserStore(db))
 
 	r := gin.Default()
 	if err := configureTrustedProxies(r); err != nil {

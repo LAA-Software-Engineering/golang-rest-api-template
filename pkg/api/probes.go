@@ -8,18 +8,18 @@ import (
 	"time"
 
 	"golang-rest-api-template/pkg/cache"
-	"golang-rest-api-template/pkg/database"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
+	"gorm.io/gorm"
 )
 
 // registerProbeRoutes mounts Kubernetes-style liveness and readiness endpoints.
 // They are registered before request logging, rate limiting, and the /api/v1
 // group so orchestrators can probe without API keys or JWTs.
-func registerProbeRoutes(r *gin.Engine, db database.Database, redisClient cache.Cache, mongoCol *mongo.Collection) {
+func registerProbeRoutes(r *gin.Engine, db *gorm.DB, redisClient cache.Cache, mongoCol *mongo.Collection) {
 	r.GET("/livez", livez)
 	r.GET("/readyz", readyzHandler(db, redisClient, mongoCol))
 }
@@ -28,7 +28,7 @@ func livez(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
-func readyzHandler(db database.Database, redisClient cache.Cache, mongoCol *mongo.Collection) gin.HandlerFunc {
+func readyzHandler(db *gorm.DB, redisClient cache.Cache, mongoCol *mongo.Collection) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
 		defer cancel()
@@ -49,12 +49,11 @@ func readyzHandler(db database.Database, redisClient cache.Cache, mongoCol *mong
 	}
 }
 
-func pingPostgres(ctx context.Context, db database.Database) error {
-	gdb, ok := db.(*database.GormDatabase)
-	if !ok || gdb == nil || gdb.DB == nil {
+func pingPostgres(ctx context.Context, db *gorm.DB) error {
+	if db == nil {
 		return errors.New("database not configured")
 	}
-	sqlDB, err := gdb.DB.DB()
+	sqlDB, err := db.DB()
 	if err != nil {
 		return err
 	}

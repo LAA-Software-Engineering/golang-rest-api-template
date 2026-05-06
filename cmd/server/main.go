@@ -74,7 +74,9 @@ func main() {
 		log.Fatalf("redis: %v", err)
 	}
 	db := database.NewDatabase()
-	dbWrapper := &database.GormDatabase{DB: db}
+	if db == nil {
+		log.Fatal("database: could not connect or migrate (see logs above)")
+	}
 	mongo := database.SetupMongoDB()
 	logger, err := zap.NewProduction()
 	if err != nil {
@@ -90,7 +92,7 @@ func main() {
 	// Gin's init already applied os.Getenv("GIN_MODE"); do not override here.
 	// Use GIN_MODE=release in production so Security/XSS middleware run (pkg/api/router.go).
 
-	r := api.NewRouter(logger, mongo, dbWrapper, redisClient)
+	r := api.NewRouter(logger, mongo, db, redisClient)
 
 	const (
 		serverAddr          = ":8001"

@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"golang-rest-api-template/pkg/cache"
-	"golang-rest-api-template/pkg/database"
 	"golang-rest-api-template/pkg/models"
 	"golang-rest-api-template/pkg/repository"
 	"golang-rest-api-template/pkg/service"
@@ -35,8 +34,7 @@ type bookRepository struct {
 }
 
 // NewBookRepository wires persistence and cache into book HTTP handlers.
-func NewBookRepository(db database.Database, redisClient cache.Cache) *bookRepository {
-	store := repository.NewGormBookStore(db)
+func NewBookRepository(store repository.BookPersistence, redisClient cache.Cache) *bookRepository {
 	return &bookRepository{svc: service.NewBookService(store, redisClient)}
 }
 
