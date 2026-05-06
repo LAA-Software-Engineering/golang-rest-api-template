@@ -129,7 +129,7 @@ jobs:
         run: |
           set -euo pipefail
           for i in $(seq 1 60); do
-            if curl -sfS "http://127.0.0.1:8001/api/v1/" >/dev/null; then
+            if curl -sfS "http://127.0.0.1:8001/readyz" >/dev/null; then
               echo "API ready after ${i} attempt(s)"
               exit 0
             fi
