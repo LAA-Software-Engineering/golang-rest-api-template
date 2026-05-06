@@ -16,11 +16,11 @@ import (
 )
 
 type fakeBookStore struct {
-	listFn    func(offset, limit int) ([]models.Book, error)
-	createFn  func(book *models.Book) error
-	firstFn   func(id uint) (*models.Book, error)
-	updateFn  func(id uint, title, author string) (*models.Book, error)
-	deleteFn  func(id uint) error
+	listFn   func(offset, limit int) ([]models.Book, error)
+	createFn func(book *models.Book) error
+	firstFn  func(id uint) (*models.Book, error)
+	updateFn func(id uint, title, author string) (*models.Book, error)
+	deleteFn func(id uint) error
 }
 
 func (f *fakeBookStore) List(offset, limit int) ([]models.Book, error) {
@@ -181,10 +181,11 @@ func TestCreateBookBumpsGenerationWhenRedis(t *testing.T) {
 		},
 	}
 	svc := NewBookService(store, mockRedis)
-	book, err := svc.CreateBook(context.Background(), "t", "a")
+	book, err := svc.CreateBook(context.Background(), 1, "t", "a")
 	assert.NoError(t, err)
 	assert.NotNil(t, book)
 	assert.Equal(t, uint(42), book.ID)
+	assert.Equal(t, uint(1), book.OwnerID)
 }
 
 func TestCreateBookNoIncrWhenNilRedis(t *testing.T) {
@@ -194,7 +195,7 @@ func TestCreateBookNoIncrWhenNilRedis(t *testing.T) {
 		},
 	}
 	svc := NewBookService(store, nil)
-	_, err := svc.CreateBook(context.Background(), "t", "a")
+	_, err := svc.CreateBook(context.Background(), 1, "t", "a")
 	assert.NoError(t, err)
 }
 
@@ -218,8 +219,11 @@ func TestUpdateBookBumpsGeneration(t *testing.T) {
 	mockRedis := cache.NewMockCache(ctrl)
 	mockRedis.EXPECT().Incr(gomock.Any(), BooksListCacheGenKey).Return(redis.NewIntResult(2, nil)).Times(1)
 
-	updated := &models.Book{ID: 1, Title: "n", Author: "m"}
+	updated := &models.Book{ID: 1, OwnerID: 5, Title: "n", Author: "m"}
 	store := &fakeBookStore{
+		firstFn: func(id uint) (*models.Book, error) {
+			return &models.Book{ID: 1, OwnerID: 5, Title: "o", Author: "o"}, nil
+		},
 		updateFn: func(id uint, title, author string) (*models.Book, error) {
 			assert.Equal(t, uint(1), id)
 			assert.Equal(t, "n", title)
@@ -228,7 +232,7 @@ func TestUpdateBookBumpsGeneration(t *testing.T) {
 		},
 	}
 	svc := NewBookService(store, mockRedis)
-	got, err := svc.UpdateBook(context.Background(), 1, "n", "m")
+	got, err := svc.UpdateBook(context.Background(), 5, 1, "n", "m")
 	assert.NoError(t, err)
 	assert.Equal(t, updated, got)
 }
@@ -240,11 +244,35 @@ func TestDeleteBookBumpsGeneration(t *testing.T) {
 	mockRedis.EXPECT().Incr(gomock.Any(), BooksListCacheGenKey).Return(redis.NewIntResult(1, nil)).Times(1)
 
 	store := &fakeBookStore{
+		firstFn: func(id uint) (*models.Book, error) {
+			return &models.Book{ID: 9, OwnerID: 3}, nil
+		},
 		deleteFn: func(id uint) error {
 			assert.Equal(t, uint(9), id)
 			return nil
 		},
 	}
 	svc := NewBookService(store, mockRedis)
-	assert.NoError(t, svc.DeleteBook(context.Background(), 9))
+	assert.NoError(t, svc.DeleteBook(context.Background(), 3, 9))
+}
+
+func TestUpdateBookWrongOwner(t *testing.T) {
+	store := &fakeBookStore{
+		firstFn: func(id uint) (*models.Book, error) {
+			return &models.Book{ID: 1, OwnerID: 1}, nil
+		},
+	}
+	svc := NewBookService(store, nil)
+	_, err := svc.UpdateBook(context.Background(), 2, 1, "x", "y")
+	assert.ErrorIs(t, err, ErrBookForbidden)
+}
+
+func TestDeleteBookWrongOwner(t *testing.T) {
+	store := &fakeBookStore{
+		firstFn: func(id uint) (*models.Book, error) {
+			return &models.Book{ID: 1, OwnerID: 1}, nil
+		},
+	}
+	svc := NewBookService(store, nil)
+	assert.ErrorIs(t, svc.DeleteBook(context.Background(), 9, 1), ErrBookForbidden)
 }

@@ -251,6 +251,12 @@
                             "type": "string"
                         }
                     },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     "404": {
                         "description": "book not found",
                         "schema": {
@@ -297,6 +303,12 @@
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "type": "string"
                         }
@@ -442,6 +454,9 @@
                     "type": "string"
                 },
                 "id": {
+                    "type": "integer"
+                },
+                "owner_id": {
                     "type": "integer"
                 },
                 "title": {
