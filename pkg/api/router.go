@@ -29,6 +29,8 @@ func NewRouter(logger *zap.Logger, mongoCollection *mongo.Collection, db databas
 	if err := configureTrustedProxies(r); err != nil {
 		panic("api: trusted proxies: " + err.Error())
 	}
+	registerProbeRoutes(r, db, redisClient, mongoCollection)
+
 	r.Use(middleware.MaxRequestBody(maxRequestBodyBytesFromEnv()))
 	r.Use(middleware.RequestID())
 

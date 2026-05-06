@@ -49,6 +49,8 @@ golang-rest-api-template/
 │  │  ├── books_test.go
 │  │  ├── book_routes_auth_test.go
 │  │  ├── main_test.go
+│  │  ├── probes.go
+│  │  ├── probes_test.go
 │  │  ├── router.go
 │  │  ├── router_trusted_proxies_test.go
 │  │  ├── user.go
@@ -176,7 +178,9 @@ http://localhost:8001/swagger/index.html
 
 ### Endpoints
 
-- `GET /api/v1/`: Health check (no `X-API-Key`; same path CI uses for readiness).
+- `GET /livez`: Liveness probe (process up; no dependency checks; no `X-API-Key`).
+- `GET /readyz`: Readiness probe (checks Postgres, Redis, Mongo; **503** if a dependency fails; no `X-API-Key`). Docker image `HEALTHCHECK` uses **`/livez`** so the container stays alive while dependencies recover.
+- `GET /api/v1/`: Health check (no `X-API-Key`; lightweight app-level ping).
 - `GET /api/v1/books`: Get all books.
 - `GET /api/v1/books/:id`: Get a single book by ID.
 - `POST /api/v1/books`: Create a new book.

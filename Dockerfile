@@ -36,6 +36,6 @@ USER appuser
 EXPOSE 8001
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-	CMD curl -fsS http://127.0.0.1:8001/api/v1/ >/dev/null || exit 1
+	CMD curl -fsS http://127.0.0.1:8001/livez >/dev/null || exit 1
 
 CMD ["/app/server"]
