@@ -28,7 +28,6 @@ func TestNewUserRepository(t *testing.T) {
 	repo := NewUserRepository(mockDB)
 
 	assert.NotNil(t, repo, "NewUserRepository should return a non-nil instance of userRepository")
-	assert.Equal(t, mockDB, repo.DB, "DB should be set to the mock database instance")
 }
 
 func TestLoginHandlerSuccess(t *testing.T) {

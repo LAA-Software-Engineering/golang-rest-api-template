@@ -8,6 +8,7 @@ import (
 	"golang-rest-api-template/pkg/cache"
 	"golang-rest-api-template/pkg/database"
 	"golang-rest-api-template/pkg/models"
+	"golang-rest-api-template/pkg/service"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -37,8 +38,6 @@ func TestNewBookRepository(t *testing.T) {
 	repo := NewBookRepository(mockDB, mockCache)
 
 	assert.NotNil(t, repo, "NewBookRepository should return a non-nil instance of bookRepository")
-	assert.Equal(t, mockDB, repo.DB, "DB should be set to the mock database instance")
-	assert.Equal(t, mockCache, repo.RedisClient, "RedisClient should be set to the mock cache instance")
 }
 
 func TestHealthcheck(t *testing.T) {
@@ -172,10 +171,10 @@ func TestFindBooksLimitCappedAtMax(t *testing.T) {
 	repo := NewBookRepository(&database.GormDatabase{DB: db}, mockCache)
 
 	gomock.InOrder(
-		mockCache.EXPECT().Get(gomock.Any(), booksListCacheGenKey).Return(redis.NewStringResult("", redis.Nil)),
-		mockCache.EXPECT().Get(gomock.Any(), booksListDataCacheKey(0, 0, findBooksMaxLimit)).Return(redis.NewStringResult("", redis.Nil)),
+		mockCache.EXPECT().Get(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewStringResult("", redis.Nil)),
+		mockCache.EXPECT().Get(gomock.Any(), service.BooksListDataCacheKey(0, 0, findBooksMaxLimit)).Return(redis.NewStringResult("", redis.Nil)),
 	)
-	mockCache.EXPECT().Set(gomock.Any(), booksListDataCacheKey(0, 0, findBooksMaxLimit), gomock.Any(), time.Minute).Return(redis.NewStatusResult("OK", nil)).Times(1)
+	mockCache.EXPECT().Set(gomock.Any(), service.BooksListDataCacheKey(0, 0, findBooksMaxLimit), gomock.Any(), time.Minute).Return(redis.NewStatusResult("OK", nil)).Times(1)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -265,7 +264,7 @@ func TestCreateBookCacheIncrError(t *testing.T) {
 	requestBody, _ := json.Marshal(inputBook)
 
 	mockDB.EXPECT().Create(gomock.Any()).Return(&gorm.DB{Error: nil})
-	mockCache.EXPECT().Incr(gomock.Any(), booksListCacheGenKey).Return(redis.NewIntResult(0, errors.New("incr error")))
+	mockCache.EXPECT().Incr(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewIntResult(0, errors.New("incr error")))
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/books", bytes.NewBuffer(requestBody))
@@ -339,14 +338,6 @@ func TestUpdateBookBindError(t *testing.T) {
 	r := gin.Default()
 	r.PUT("/book/:id", repo.UpdateBook)
 
-	existingBook := models.Book{ID: 1, Title: "Old Title", Author: "Old Author"}
-
-	mockDB.EXPECT().FirstByID(gomock.Any(), uint(1)).DoAndReturn(func(dest interface{}, id uint) database.Database {
-		*dest.(*models.Book) = existingBook
-		return mockDB
-	})
-	mockDB.EXPECT().Error().Return(nil)
-
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("PUT", "/book/1", bytes.NewBufferString("invalid json"))
 	req.Header.Set("Content-Type", "application/json")
@@ -386,8 +377,8 @@ func TestFindBooksDatabaseError(t *testing.T) {
 	r.GET("/books", repo.FindBooks)
 
 	gomock.InOrder(
-		mockCache.EXPECT().Get(gomock.Any(), booksListCacheGenKey).Return(redis.NewStringResult("", redis.Nil)),
-		mockCache.EXPECT().Get(gomock.Any(), booksListDataCacheKey(0, 0, 10)).Return(redis.NewStringResult("", redis.Nil)),
+		mockCache.EXPECT().Get(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewStringResult("", redis.Nil)),
+		mockCache.EXPECT().Get(gomock.Any(), service.BooksListDataCacheKey(0, 0, 10)).Return(redis.NewStringResult("", redis.Nil)),
 	)
 
 	w := httptest.NewRecorder()
@@ -460,7 +451,7 @@ func TestUpdateBookBumpsListCacheGen(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	mockCache := cache.NewMockCache(ctrl)
-	mockCache.EXPECT().Incr(gomock.Any(), booksListCacheGenKey).Return(redis.NewIntResult(1, nil)).Times(1)
+	mockCache.EXPECT().Incr(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewIntResult(1, nil)).Times(1)
 
 	repo := NewBookRepository(&database.GormDatabase{DB: db}, mockCache)
 	gin.SetMode(gin.TestMode)
@@ -495,7 +486,7 @@ func TestDeleteBookBumpsListCacheGen(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	mockCache := cache.NewMockCache(ctrl)
-	mockCache.EXPECT().Incr(gomock.Any(), booksListCacheGenKey).Return(redis.NewIntResult(1, nil)).Times(1)
+	mockCache.EXPECT().Incr(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewIntResult(1, nil)).Times(1)
 
 	repo := NewBookRepository(&database.GormDatabase{DB: db}, mockCache)
 	gin.SetMode(gin.TestMode)
@@ -571,10 +562,10 @@ func TestFindBooks(t *testing.T) {
 	repo := NewBookRepository(&database.GormDatabase{DB: db}, mockCache)
 
 	gomock.InOrder(
-		mockCache.EXPECT().Get(gomock.Any(), booksListCacheGenKey).Return(redis.NewStringResult("0", nil)),
-		mockCache.EXPECT().Get(gomock.Any(), booksListDataCacheKey(0, 0, 10)).Return(redis.NewStringResult("", redis.Nil)),
+		mockCache.EXPECT().Get(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewStringResult("0", nil)),
+		mockCache.EXPECT().Get(gomock.Any(), service.BooksListDataCacheKey(0, 0, 10)).Return(redis.NewStringResult("", redis.Nil)),
 	)
-	mockCache.EXPECT().Set(gomock.Any(), booksListDataCacheKey(0, 0, 10), gomock.Any(), time.Minute).Return(redis.NewStatusResult("OK", nil)).Times(1)
+	mockCache.EXPECT().Set(gomock.Any(), service.BooksListDataCacheKey(0, 0, 10), gomock.Any(), time.Minute).Return(redis.NewStatusResult("OK", nil)).Times(1)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -615,7 +606,7 @@ func TestCreateBook(t *testing.T) {
 		return &gorm.DB{Error: nil}
 	})
 
-	mockCache.EXPECT().Incr(gomock.Any(), booksListCacheGenKey).Return(redis.NewIntResult(1, nil))
+	mockCache.EXPECT().Incr(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewIntResult(1, nil))
 
 	w := httptest.NewRecorder()
 	req, err := http.NewRequest("POST", "/books", bytes.NewBuffer(requestBody))
@@ -844,12 +835,12 @@ func TestFindBooksSingleflightCoalescesDB(t *testing.T) {
 	repo := NewBookRepository(&database.GormDatabase{DB: db}, mockCache)
 
 	const n = 50
-	dataKey := booksListDataCacheKey(0, 0, 10)
+	dataKey := service.BooksListDataCacheKey(0, 0, 10)
 	var cacheMu sync.Mutex
 	var cachedPayload string
 	mockCache.EXPECT().Get(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, key string) *redis.StringCmd {
 		switch key {
-		case booksListCacheGenKey:
+		case service.BooksListCacheGenKey:
 			return redis.NewStringResult("", redis.Nil)
 		case dataKey:
 			cacheMu.Lock()
@@ -937,12 +928,12 @@ func TestFindBooksLeadingZerosShareListCache(t *testing.T) {
 	mockCache := cache.NewMockCache(ctrl)
 	repo := NewBookRepository(&database.GormDatabase{DB: db}, mockCache)
 
-	dataKey := booksListDataCacheKey(0, 0, 10)
+	dataKey := service.BooksListDataCacheKey(0, 0, 10)
 	var cacheMu sync.Mutex
 	var cachedPayload string
 	mockCache.EXPECT().Get(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, key string) *redis.StringCmd {
 		switch key {
-		case booksListCacheGenKey:
+		case service.BooksListCacheGenKey:
 			return redis.NewStringResult("", redis.Nil)
 		case dataKey:
 			cacheMu.Lock()
