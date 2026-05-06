@@ -8,6 +8,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 func TestLivez(t *testing.T) {
@@ -25,6 +27,14 @@ func TestLivez(t *testing.T) {
 func TestPingPostgresNilDB(t *testing.T) {
 	err := pingPostgres(context.Background(), nil)
 	assert.Error(t, err)
+}
+
+func TestPingPostgresSQLiteOK(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NoError(t, pingPostgres(context.Background(), db))
 }
 
 func TestPingRedisNilClient(t *testing.T) {

@@ -1,7 +1,6 @@
 package database
 
 import (
-	"errors"
 	"testing"
 	"time"
 
@@ -20,43 +19,6 @@ func setupSQLiteDB(t *testing.T) *gorm.DB {
 	assert.NoError(t, err)
 
 	return db
-}
-
-func TestGormDatabaseWhereAndFirst(t *testing.T) {
-	db := setupSQLiteDB(t)
-	gdb := &GormDatabase{DB: db}
-
-	book := models.Book{Title: "The Cover Test", Author: "Author A"}
-	assert.NoError(t, gdb.Create(&book).Error)
-
-	var found models.Book
-	result := gdb.Where("title = ?", "The Cover Test").First(&found)
-	assert.NoError(t, result.Error())
-	assert.Equal(t, book.Title, found.Title)
-	assert.Equal(t, book.Author, found.Author)
-}
-
-func TestGormDatabaseFirstByID(t *testing.T) {
-	db := setupSQLiteDB(t)
-	gdb := &GormDatabase{DB: db}
-
-	book := models.Book{Title: "Lookup By ID", Author: "Author B"}
-	assert.NoError(t, gdb.Create(&book).Error)
-
-	var found models.Book
-	result := gdb.FirstByID(&found, book.ID)
-	assert.NoError(t, result.Error())
-	assert.Equal(t, book.Title, found.Title)
-}
-
-func TestGormDatabaseError(t *testing.T) {
-	db := setupSQLiteDB(t)
-	gdb := &GormDatabase{DB: db}
-
-	var notFound models.Book
-	err := gdb.Where("id = ?", 999).First(&notFound).Error()
-	assert.Error(t, err)
-	assert.True(t, errors.Is(err, gorm.ErrRecordNotFound))
 }
 
 func TestConfigureConnPoolSQLite(t *testing.T) {

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/http"
 
-	"golang-rest-api-template/pkg/database"
 	"golang-rest-api-template/pkg/models"
 	"golang-rest-api-template/pkg/repository"
 	"golang-rest-api-template/pkg/service"
@@ -23,8 +22,7 @@ type userRepository struct {
 }
 
 // NewUserRepository wires persistence into user HTTP handlers.
-func NewUserRepository(db database.Database) *userRepository {
-	store := repository.NewGormUserStore(db)
+func NewUserRepository(store repository.UserPersistence) *userRepository {
 	return &userRepository{svc: service.NewUserService(store)}
 }
 
