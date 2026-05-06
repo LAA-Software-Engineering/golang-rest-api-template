@@ -3,19 +3,18 @@ package repository
 import (
 	"errors"
 
-	"golang-rest-api-template/pkg/database"
 	"golang-rest-api-template/pkg/models"
 
 	"gorm.io/gorm"
 )
 
-// GormBookStore implements BookPersistence using database.Database (GORM).
+// GormBookStore implements BookPersistence using GORM.
 type GormBookStore struct {
-	db database.Database
+	db *gorm.DB
 }
 
 // NewGormBookStore returns a BookPersistence backed by db.
-func NewGormBookStore(db database.Database) *GormBookStore {
+func NewGormBookStore(db *gorm.DB) *GormBookStore {
 	return &GormBookStore{db: db}
 }
 
@@ -31,7 +30,7 @@ func (s *GormBookStore) Create(book *models.Book) error {
 
 func (s *GormBookStore) FirstByID(id uint) (*models.Book, error) {
 	var book models.Book
-	if err := s.db.FirstByID(&book, id).Error(); err != nil {
+	if err := s.db.First(&book, id).Error; err != nil {
 		return nil, err
 	}
 	return &book, nil

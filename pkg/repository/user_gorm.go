@@ -3,25 +3,24 @@ package repository
 import (
 	"errors"
 
-	"golang-rest-api-template/pkg/database"
 	"golang-rest-api-template/pkg/models"
 
 	"gorm.io/gorm"
 )
 
-// GormUserStore implements UserPersistence using database.Database (GORM).
+// GormUserStore implements UserPersistence using GORM.
 type GormUserStore struct {
-	db database.Database
+	db *gorm.DB
 }
 
 // NewGormUserStore returns a UserPersistence backed by db.
-func NewGormUserStore(db database.Database) *GormUserStore {
+func NewGormUserStore(db *gorm.DB) *GormUserStore {
 	return &GormUserStore{db: db}
 }
 
 func (s *GormUserStore) FindByUsername(username string) (*models.User, error) {
 	var u models.User
-	if err := s.db.Where("username = ?", username).First(&u).Error(); err != nil {
+	if err := s.db.Where("username = ?", username).First(&u).Error; err != nil {
 		return nil, err
 	}
 	return &u, nil
