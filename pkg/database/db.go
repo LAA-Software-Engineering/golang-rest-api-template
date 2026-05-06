@@ -71,41 +71,9 @@ func configureConnPool(db *gorm.DB) error {
 	return nil
 }
 
-type Database interface {
-	Offset(offset int) *gorm.DB
-	Limit(limit int) *gorm.DB
-	Find(interface{}, ...interface{}) *gorm.DB
-	Create(value interface{}) *gorm.DB
-	Where(query interface{}, args ...interface{}) Database
-	Delete(interface{}, ...interface{}) *gorm.DB
-	Model(model interface{}) *gorm.DB
-	First(dest interface{}, conds ...interface{}) Database
-	FirstByID(dest interface{}, id uint) Database
-	Updates(interface{}) *gorm.DB
-	Order(value interface{}) *gorm.DB
-	Error() error
-}
-
-type GormDatabase struct {
-	*gorm.DB
-}
-
-func (db *GormDatabase) Where(query interface{}, args ...interface{}) Database {
-	return &GormDatabase{db.DB.Where(query, args...)}
-}
-
-func (db *GormDatabase) First(dest interface{}, conds ...interface{}) Database {
-	return &GormDatabase{db.DB.First(dest, conds...)}
-}
-
-func (db *GormDatabase) FirstByID(dest interface{}, id uint) Database {
-	return &GormDatabase{db.DB.First(dest, id)}
-}
-
-func (db *GormDatabase) Error() error {
-	return db.DB.Error
-}
-
+// NewDatabase opens PostgreSQL using POSTGRES_* environment variables, retries on
+// failure, runs AutoMigrate for application models, and configures the underlying
+// sql.DB pool. It returns nil if the database cannot be opened or configured.
 func NewDatabase() *gorm.DB {
 	var database *gorm.DB
 	var err error
