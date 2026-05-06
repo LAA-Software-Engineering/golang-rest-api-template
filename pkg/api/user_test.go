@@ -59,7 +59,13 @@ func TestLoginHandlerSuccess(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "token")
+	var loginBody struct {
+		Data struct {
+			Token string `json:"token"`
+		} `json:"data"`
+	}
+	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &loginBody))
+	assert.NotEmpty(t, loginBody.Data.Token)
 }
 
 func TestLoginHandlerInvalidJSON(t *testing.T) {

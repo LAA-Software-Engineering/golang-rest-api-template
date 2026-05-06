@@ -36,8 +36,10 @@ def get_jwt_token():
 
     assert login_response.status_code == 200, f"User login failed: {login_response.status_code}"
 
-    # Extracting JWT token from login response
-    jwt_token = login_response.json().get("token")
+    # Extracting JWT token from login response (standard envelope)
+    body = login_response.json()
+    data = body.get("data") or {}
+    jwt_token = data.get("token") if isinstance(data, dict) else None
     assert jwt_token is not None, "JWT token not found in login response"
 
     return jwt_token

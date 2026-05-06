@@ -191,11 +191,17 @@ http://localhost:8001/swagger/index.html
 - `POST /api/v1/register`: Register a new user.
 - `GET /swagger/*`: Swagger UI (no `X-API-Key`).
 
+### JSON responses
+
+Successful `/api/v1` JSON responses use a single envelope: **`{"data": ...}`** (implemented in `pkg/httpresp`). Examples: `GET /api/v1/` returns `{"data":"ok"}`; book list and book CRUD return the resource or collection inside `data`; `POST /api/v1/login` returns `{"data":{"token":"<jwt>"}}`; `POST /api/v1/register` returns `{"data":{"message":"Registration successful"}}`.
+
+Error responses use **`{"error":"..."}`** (`pkg/httperr`). RFC 7807-style problem details are not used yet.
+
 ### Authentication
 
 Under **`/api/v1`**, every route **except** `GET /api/v1/` (health) requires the **`X-API-Key`** header matching **`API_SECRET_KEY`** (service-to-service gate).
 
-Book **mutations** (`POST`, `PUT`, `PATCH`, and `DELETE` on `/api/v1/books` and `/api/v1/books/:id`) also require a valid user JWT in `Authorization: Bearer <token>` (obtain via `/api/v1/register` and `/api/v1/login`). Book **reads** (`GET` list and `GET` by id) require the API key only.
+Book **mutations** (`POST`, `PUT`, `PATCH`, and `DELETE` on `/api/v1/books` and `/api/v1/books/:id`) also require a valid user JWT in `Authorization: Bearer <token>` (obtain a token from `POST /api/v1/login`; the JWT string is at **`data.token`** in the JSON body). Book **reads** (`GET` list and `GET` by id) require the API key only.
 
 ```bash
 curl -H "X-API-Key: <YOUR_API_KEY>" http://localhost:8001/api/v1/books
@@ -269,7 +275,7 @@ pytest -v tests/e2e.py
 
 The tests will perform the following actions:
 
-1. Register a new user and obtain a JWT token.
+1. Register a new user, log in, and obtain a JWT from the login response (`data.token`).
 2. Create a new book in the system.
 3. Retrieve all books and verify the created book is present.
 4. Retrieve a specific book by its ID.

@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"golang-rest-api-template/pkg/httperr"
+	"golang-rest-api-template/pkg/httpresp"
 	"golang-rest-api-template/pkg/models"
 	"golang-rest-api-template/pkg/repository"
 	"golang-rest-api-template/pkg/service"
@@ -38,7 +39,7 @@ func NewUserHandler(store repository.UserPersistence) *userHandler {
 // @Accept  json
 // @Produce  json
 // @Param   user     body    models.LoginUser     true        "User login object"
-// @Success 200 {string} string "JWT Token"
+// @Success 200 {object} models.LoginAPIResponse "JWT in standard envelope"
 // @Failure 400 {string} string "Bad Request"
 // @Failure 401 {string} string "Unauthorized"
 // @Failure 500 {string} string "Internal Server Error"
@@ -61,7 +62,7 @@ func (h *userHandler) LoginHandler(c *gin.Context) {
 		}
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"token": token})
+	httpresp.OK(c, models.LoginTokenBody{Token: token})
 }
 
 // RegisterHandler godoc
@@ -73,7 +74,7 @@ func (h *userHandler) LoginHandler(c *gin.Context) {
 // @Accept  json
 // @Produce  json
 // @Param   user     body    models.LoginUser     true        "User registration object"
-// @Success 201 {string} string	"Successfully registered"
+// @Success 201 {object} models.RegisterAPIResponse "Registration message in standard envelope"
 // @Failure 400 {string} string "Bad Request"
 // @Failure 409 {string} string "Conflict"
 // @Failure 500 {string} string "Internal Server Error"
@@ -95,5 +96,5 @@ func (h *userHandler) RegisterHandler(c *gin.Context) {
 		}
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"message": "Registration successful"})
+	httpresp.Created(c, models.RegisterSuccessBody{Message: "Registration successful"})
 }
