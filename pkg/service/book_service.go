@@ -117,8 +117,8 @@ func (s *BookService) GetBook(_ context.Context, id uint) (*models.Book, error) 
 	return s.store.FirstByID(id)
 }
 
-// UpdateBook updates fields when actorID owns the book, then bumps list cache generation.
-func (s *BookService) UpdateBook(ctx context.Context, actorID, id uint, title, author string) (*models.Book, error) {
+// ReplaceBook replaces title and author when actorID owns the book (PUT semantics).
+func (s *BookService) ReplaceBook(ctx context.Context, actorID, id uint, title, author string) (*models.Book, error) {
 	b, err := s.store.FirstByID(id)
 	if err != nil {
 		return nil, err
@@ -127,6 +127,23 @@ func (s *BookService) UpdateBook(ctx context.Context, actorID, id uint, title, a
 		return nil, ErrBookForbidden
 	}
 	book, err := s.store.UpdateFields(id, title, author)
+	if err != nil {
+		return nil, err
+	}
+	s.bumpListCacheGeneration(ctx)
+	return book, nil
+}
+
+// PatchBook applies a partial update for any non-nil title/author pointers (PATCH semantics).
+func (s *BookService) PatchBook(ctx context.Context, actorID, id uint, title, author *string) (*models.Book, error) {
+	b, err := s.store.FirstByID(id)
+	if err != nil {
+		return nil, err
+	}
+	if b.OwnerID != actorID {
+		return nil, ErrBookForbidden
+	}
+	book, err := s.store.PatchFields(id, title, author)
 	if err != nil {
 		return nil, err
 	}

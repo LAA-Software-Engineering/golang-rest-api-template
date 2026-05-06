@@ -97,6 +97,40 @@ func TestGormBookStoreUpdateFieldsNotFound(t *testing.T) {
 	assert.True(t, IsBookNotFound(err))
 }
 
+func TestGormBookStorePatchFieldsTitleOnly(t *testing.T) {
+	db := testBookDB(t)
+	s := NewGormBookStore(db)
+	b := &models.Book{OwnerID: 1, Title: "orig", Author: "keep"}
+	assert.NoError(t, s.Create(b))
+	newTitle := "patched"
+	out, err := s.PatchFields(b.ID, &newTitle, nil)
+	if !assert.NoError(t, err) {
+		return
+	}
+	assert.Equal(t, "patched", out.Title)
+	assert.Equal(t, "keep", out.Author)
+	reloaded, err := s.FirstByID(b.ID)
+	if !assert.NoError(t, err) {
+		return
+	}
+	assert.Equal(t, "patched", reloaded.Title)
+	assert.Equal(t, "keep", reloaded.Author)
+}
+
+func TestGormBookStorePatchFieldsAuthorOnly(t *testing.T) {
+	db := testBookDB(t)
+	s := NewGormBookStore(db)
+	b := &models.Book{OwnerID: 1, Title: "keep", Author: "orig"}
+	assert.NoError(t, s.Create(b))
+	newAuthor := "new-author"
+	out, err := s.PatchFields(b.ID, nil, &newAuthor)
+	if !assert.NoError(t, err) {
+		return
+	}
+	assert.Equal(t, "keep", out.Title)
+	assert.Equal(t, "new-author", out.Author)
+}
+
 func TestGormBookStoreDeleteByID(t *testing.T) {
 	db := testBookDB(t)
 	s := NewGormBookStore(db)

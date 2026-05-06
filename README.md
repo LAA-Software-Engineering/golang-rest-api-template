@@ -184,7 +184,8 @@ http://localhost:8001/swagger/index.html
 - `GET /api/v1/books`: Get all books.
 - `GET /api/v1/books/:id`: Get a single book by ID.
 - `POST /api/v1/books`: Create a new book.
-- `PUT /api/v1/books/:id`: Update a book.
+- `PUT /api/v1/books/:id`: Replace a book's title and author (both fields required in the JSON body).
+- `PATCH /api/v1/books/:id`: Partially update a book (send only the fields to change; at least one of `title` or `author` is required).
 - `DELETE /api/v1/books/:id`: Delete a book.
 - `POST /api/v1/login`: Login.
 - `POST /api/v1/register`: Register a new user.
@@ -194,7 +195,7 @@ http://localhost:8001/swagger/index.html
 
 Under **`/api/v1`**, every route **except** `GET /api/v1/` (health) requires the **`X-API-Key`** header matching **`API_SECRET_KEY`** (service-to-service gate).
 
-Book **mutations** (`POST`, `PUT`, and `DELETE` on `/api/v1/books` and `/api/v1/books/:id`) also require a valid user JWT in `Authorization: Bearer <token>` (obtain via `/api/v1/register` and `/api/v1/login`). Book **reads** (`GET` list and `GET` by id) require the API key only.
+Book **mutations** (`POST`, `PUT`, `PATCH`, and `DELETE` on `/api/v1/books` and `/api/v1/books/:id`) also require a valid user JWT in `Authorization: Bearer <token>` (obtain via `/api/v1/register` and `/api/v1/login`). Book **reads** (`GET` list and `GET` by id) require the API key only.
 
 ```bash
 curl -H "X-API-Key: <YOUR_API_KEY>" http://localhost:8001/api/v1/books
@@ -272,7 +273,7 @@ The tests will perform the following actions:
 2. Create a new book in the system.
 3. Retrieve all books and verify the created book is present.
 4. Retrieve a specific book by its ID.
-5. Update the book's details.
+5. Replace the book's title and author via `PUT`, and patch the title only via `PATCH`.
 6. Delete the book and verify it is no longer accessible.
 
 Each test includes assertions to ensure that the API behaves as expected.

@@ -315,7 +315,7 @@ func TestUpdateBookInvalidID(t *testing.T) {
 	r := gin.Default()
 	r.PUT("/book/:id", withBookActor(1), h.UpdateBook)
 
-	updateInput := models.UpdateBook{Title: "New Title", Author: "New Author"}
+	updateInput := models.ReplaceBook{Title: "New Title", Author: "New Author"}
 	requestBody, _ := json.Marshal(updateInput)
 
 	w := httptest.NewRecorder()
@@ -338,7 +338,7 @@ func TestUpdateBookNotFound(t *testing.T) {
 	r := gin.Default()
 	r.PUT("/book/:id", withBookActor(1), h.UpdateBook)
 
-	updateInput := models.UpdateBook{Title: "New Title", Author: "New Author"}
+	updateInput := models.ReplaceBook{Title: "New Title", Author: "New Author"}
 	requestBody, _ := json.Marshal(updateInput)
 
 	mockStore.EXPECT().FirstByID(uint(1)).Return(nil, gorm.ErrRecordNotFound)
@@ -367,7 +367,7 @@ func TestUpdateBookForbiddenWrongOwner(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
 	r.PUT("/book/:id", withBookActor(2), h.UpdateBook)
-	body, err := json.Marshal(models.UpdateBook{Title: "n", Author: "n"})
+	body, err := json.Marshal(models.ReplaceBook{Title: "n", Author: "n"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,6 +397,65 @@ func TestUpdateBookBindError(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), "error")
+}
+
+func TestPatchBookRequiresAtLeastOneField(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	h := NewBookHandler(repository.NewMockBookPersistence(ctrl), nil)
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.PATCH("/book/:id", withBookActor(1), h.PatchBook)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/book/1", bytes.NewBufferString("{}"))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "at least one")
+}
+
+func TestPutBookRequiresTitleAndAuthor(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	h := NewBookHandler(repository.NewMockBookPersistence(ctrl), nil)
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.PUT("/book/:id", withBookActor(1), h.UpdateBook)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/book/1", bytes.NewBufferString(`{"title":"only-title"}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestPatchBookTitleOnly(t *testing.T) {
+	// Isolated DB: shared in-memory SQLite is reused across tests and races under parallel pkg/api runs.
+	dbPath := filepath.Join(t.TempDir(), "patch_book_title.sqlite")
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&models.Book{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&models.Book{OwnerID: 1, Title: "old", Author: "same"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	h := NewBookHandler(repository.NewGormBookStore(db), nil)
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.PATCH("/book/:id", withBookActor(1), h.PatchBook)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/book/1", bytes.NewBufferString(`{"title":"new-title"}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp struct {
+		Data models.Book `json:"data"`
+	}
+	assert.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Equal(t, "new-title", resp.Data.Title)
+	assert.Equal(t, "same", resp.Data.Author)
 }
 
 func TestFindBooksDatabaseError(t *testing.T) {
@@ -470,7 +529,7 @@ func TestUpdateBookDatabaseErrorOnUpdates(t *testing.T) {
 	r := gin.Default()
 	r.PUT("/book/:id", withBookActor(1), h.UpdateBook)
 
-	updateInput := models.UpdateBook{Title: "New Title", Author: "New Author"}
+	updateInput := models.ReplaceBook{Title: "New Title", Author: "New Author"}
 	requestBody, err := json.Marshal(updateInput)
 	if err != nil {
 		t.Fatal(err)
@@ -509,7 +568,7 @@ func TestUpdateBookBumpsListCacheGen(t *testing.T) {
 	r := gin.Default()
 	r.PUT("/book/:id", withBookActor(1), h.UpdateBook)
 
-	body, err := json.Marshal(models.UpdateBook{Title: "n", Author: "n"})
+	body, err := json.Marshal(models.ReplaceBook{Title: "n", Author: "n"})
 	if err != nil {
 		t.Fatal(err)
 	}
