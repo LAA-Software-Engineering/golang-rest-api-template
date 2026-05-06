@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"golang-rest-api-template/pkg/cache"
+	"golang-rest-api-template/pkg/httperr"
 	"golang-rest-api-template/pkg/middleware"
 	"golang-rest-api-template/pkg/models"
 	"golang-rest-api-template/pkg/repository"
@@ -48,7 +49,7 @@ func parseIDParam(c *gin.Context) (uint, bool) {
 	value := c.Param("id")
 	id, err := strconv.ParseUint(value, 10, strconv.IntSize)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid id format"})
+		httperr.Write(c, http.StatusBadRequest, "Invalid id format")
 		return 0, false
 	}
 	return uint(id), true
@@ -60,20 +61,20 @@ func parseOffsetLimit(c *gin.Context) (offset, limit int, ok bool) {
 
 	o, err := strconv.Atoi(offsetQuery)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid offset format"})
+		httperr.Write(c, http.StatusBadRequest, "Invalid offset format")
 		return 0, 0, false
 	}
 	l, err := strconv.Atoi(limitQuery)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid limit format"})
+		httperr.Write(c, http.StatusBadRequest, "Invalid limit format")
 		return 0, 0, false
 	}
 	if o < 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "offset must be >= 0"})
+		httperr.Write(c, http.StatusBadRequest, "offset must be >= 0")
 		return 0, 0, false
 	}
 	if l < findBooksMinLimit {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "limit must be at least 1"})
+		httperr.Write(c, http.StatusBadRequest, "limit must be at least 1")
 		return 0, 0, false
 	}
 	if l > findBooksMaxLimit {
@@ -131,15 +132,15 @@ func (h *bookHandler) FindBooks(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrListBooksDB):
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list books"})
+			httperr.Write(c, http.StatusInternalServerError, "Failed to list books")
 		case errors.Is(err, service.ErrListBooksMarshal):
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to marshal data"})
+			httperr.Write(c, http.StatusInternalServerError, "Failed to marshal data")
 		case errors.Is(err, service.ErrListBooksRedis):
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set cache"})
+			httperr.Write(c, http.StatusInternalServerError, "Failed to set cache")
 		case errors.Is(err, service.ErrListBooksUnmarshal):
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to unmarshal cached data"})
+			httperr.Write(c, http.StatusInternalServerError, "Failed to unmarshal cached data")
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list books"})
+			httperr.Write(c, http.StatusInternalServerError, "Failed to list books")
 		}
 		return
 	}
@@ -163,17 +164,17 @@ func (h *bookHandler) FindBooks(c *gin.Context) {
 func (h *bookHandler) CreateBook(c *gin.Context) {
 	ownerID, ok := contextUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		httperr.Write(c, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 	var input models.CreateBook
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		httperr.Write(c, http.StatusBadRequest, err.Error())
 		return
 	}
 	book, err := h.svc.CreateBook(c.Request.Context(), ownerID, input.Title, input.Author)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create book"})
+		httperr.Write(c, http.StatusInternalServerError, "Failed to create book")
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"data": book})
@@ -197,10 +198,10 @@ func (h *bookHandler) FindBook(c *gin.Context) {
 	book, err := h.svc.GetBook(c.Request.Context(), id)
 	if err != nil {
 		if repository.IsBookNotFound(err) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "book not found"})
+			httperr.Write(c, http.StatusNotFound, "book not found")
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load book"})
+		httperr.Write(c, http.StatusInternalServerError, "Failed to load book")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": book})
@@ -226,7 +227,7 @@ func (h *bookHandler) FindBook(c *gin.Context) {
 func (h *bookHandler) UpdateBook(c *gin.Context) {
 	actorID, ok := contextUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		httperr.Write(c, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 	var input models.ReplaceBook
@@ -235,20 +236,20 @@ func (h *bookHandler) UpdateBook(c *gin.Context) {
 		return
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		httperr.Write(c, http.StatusBadRequest, err.Error())
 		return
 	}
 	book, err := h.svc.ReplaceBook(c.Request.Context(), actorID, id, input.Title, input.Author)
 	if err != nil {
 		if repository.IsBookNotFound(err) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "book not found"})
+			httperr.Write(c, http.StatusNotFound, "book not found")
 			return
 		}
 		if errors.Is(err, service.ErrBookForbidden) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			httperr.Write(c, http.StatusForbidden, "forbidden")
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update book"})
+		httperr.Write(c, http.StatusInternalServerError, "Failed to update book")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": book})
@@ -274,7 +275,7 @@ func (h *bookHandler) UpdateBook(c *gin.Context) {
 func (h *bookHandler) PatchBook(c *gin.Context) {
 	actorID, ok := contextUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		httperr.Write(c, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 	id, ok := parseIDParam(c)
@@ -283,24 +284,24 @@ func (h *bookHandler) PatchBook(c *gin.Context) {
 	}
 	var input models.PatchBook
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		httperr.Write(c, http.StatusBadRequest, err.Error())
 		return
 	}
 	if input.Title == nil && input.Author == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "at least one of title or author is required"})
+		httperr.Write(c, http.StatusBadRequest, "at least one of title or author is required")
 		return
 	}
 	book, err := h.svc.PatchBook(c.Request.Context(), actorID, id, input.Title, input.Author)
 	if err != nil {
 		if repository.IsBookNotFound(err) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "book not found"})
+			httperr.Write(c, http.StatusNotFound, "book not found")
 			return
 		}
 		if errors.Is(err, service.ErrBookForbidden) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			httperr.Write(c, http.StatusForbidden, "forbidden")
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update book"})
+		httperr.Write(c, http.StatusInternalServerError, "Failed to update book")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": book})
@@ -323,7 +324,7 @@ func (h *bookHandler) PatchBook(c *gin.Context) {
 func (h *bookHandler) DeleteBook(c *gin.Context) {
 	actorID, ok := contextUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		httperr.Write(c, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 	id, ok := parseIDParam(c)
@@ -332,14 +333,14 @@ func (h *bookHandler) DeleteBook(c *gin.Context) {
 	}
 	if err := h.svc.DeleteBook(c.Request.Context(), actorID, id); err != nil {
 		if repository.IsBookNotFound(err) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "book not found"})
+			httperr.Write(c, http.StatusNotFound, "book not found")
 			return
 		}
 		if errors.Is(err, service.ErrBookForbidden) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			httperr.Write(c, http.StatusForbidden, "forbidden")
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete book"})
+		httperr.Write(c, http.StatusInternalServerError, "Failed to delete book")
 		return
 	}
 	c.Status(http.StatusNoContent)

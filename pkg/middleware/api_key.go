@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"sync"
 
+	"golang-rest-api-template/pkg/httperr"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -88,8 +90,7 @@ func APIKeyAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		secret := apiSecretCopy()
 		if len(secret) < MinAPISecretKeyBytes {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "API secret key not configured"})
-			c.Abort()
+			httperr.Abort(c, http.StatusServiceUnavailable, "API secret key not configured")
 			return
 		}
 		apiKey := c.GetHeader("X-API-Key")
@@ -97,9 +98,6 @@ func APIKeyAuth() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Unauthorized",
-		})
-		c.Abort()
+		httperr.Abort(c, http.StatusUnauthorized, "Unauthorized")
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	"golang-rest-api-template/pkg/httperr"
 	"golang-rest-api-template/pkg/models"
 	"golang-rest-api-template/pkg/repository"
 	"golang-rest-api-template/pkg/service"
@@ -45,18 +46,18 @@ func NewUserHandler(store repository.UserPersistence) *userHandler {
 func (h *userHandler) LoginHandler(c *gin.Context) {
 	var incoming models.LoginUser
 	if err := c.ShouldBindJSON(&incoming); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		httperr.Write(c, http.StatusBadRequest, err.Error())
 		return
 	}
 	token, err := h.svc.Login(c.Request.Context(), incoming.Username, incoming.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrInvalidLogin):
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
+			httperr.Write(c, http.StatusUnauthorized, "Invalid username or password")
 		case errors.Is(err, service.ErrLoginDB), errors.Is(err, service.ErrTokenGenerate):
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
+			httperr.Write(c, http.StatusInternalServerError, "Internal Server Error")
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
+			httperr.Write(c, http.StatusInternalServerError, "Internal Server Error")
 		}
 		return
 	}
@@ -80,17 +81,17 @@ func (h *userHandler) LoginHandler(c *gin.Context) {
 func (h *userHandler) RegisterHandler(c *gin.Context) {
 	var user models.LoginUser
 	if err := c.ShouldBindJSON(&user); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		httperr.Write(c, http.StatusBadRequest, err.Error())
 		return
 	}
 	if err := h.svc.Register(c.Request.Context(), user.Username, user.Password); err != nil {
 		switch {
 		case errors.Is(err, service.ErrRegisterConflict):
-			c.JSON(http.StatusConflict, gin.H{"error": "username already taken"})
+			httperr.Write(c, http.StatusConflict, "username already taken")
 		case errors.Is(err, service.ErrRegisterHash), errors.Is(err, service.ErrRegisterSave):
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not save user"})
+			httperr.Write(c, http.StatusInternalServerError, "Could not save user")
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not save user"})
+			httperr.Write(c, http.StatusInternalServerError, "Could not save user")
 		}
 		return
 	}

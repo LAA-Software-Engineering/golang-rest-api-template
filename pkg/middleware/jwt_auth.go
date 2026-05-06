@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"golang-rest-api-template/pkg/auth"
+	"golang-rest-api-template/pkg/httperr"
 	"net/http"
 	"strings"
 
@@ -21,21 +22,18 @@ func JWTAuth() gin.HandlerFunc {
 		const BearerSchema = "Bearer "
 		header := c.GetHeader("Authorization")
 		if header == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing Authorization Header"})
-			c.Abort()
+			httperr.Abort(c, http.StatusUnauthorized, "Missing Authorization Header")
 			return
 		}
 
 		if !strings.HasPrefix(header, BearerSchema) {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid Authorization Header"})
-			c.Abort()
+			httperr.Abort(c, http.StatusUnauthorized, "Invalid Authorization Header")
 			return
 		}
 
 		signingKey := auth.JWTSigningKey()
 		if len(signingKey) < auth.MinJWTSecretKeyBytes {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "JWT signing key not configured"})
-			c.Abort()
+			httperr.Abort(c, http.StatusServiceUnavailable, "JWT signing key not configured")
 			return
 		}
 
@@ -45,20 +43,17 @@ func JWTAuth() gin.HandlerFunc {
 		token, err := jwt.ParseWithClaims(tokenStr, claims, auth.JWTKeyFunc(signingKey))
 
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
-			c.Abort()
+			httperr.Abort(c, http.StatusUnauthorized, "Invalid token")
 			return
 		}
 
 		if !token.Valid {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
-			c.Abort()
+			httperr.Abort(c, http.StatusUnauthorized, "Invalid token")
 			return
 		}
 
 		if claims.UserID == 0 {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
-			c.Abort()
+			httperr.Abort(c, http.StatusUnauthorized, "Invalid token")
 			return
 		}
 
