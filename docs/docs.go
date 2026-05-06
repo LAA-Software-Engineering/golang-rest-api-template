@@ -209,7 +209,7 @@ const docTemplate = `{
                         "JwtAuth": []
                     }
                 ],
-                "description": "Update the book details for the given ID",
+                "description": "Replaces both title and author. Use PATCH for partial updates.",
                 "consumes": [
                     "application/json"
                 ],
@@ -219,7 +219,7 @@ const docTemplate = `{
                 "tags": [
                     "books"
                 ],
-                "summary": "Update a book by ID",
+                "summary": "Replace a book by ID (PUT)",
                 "parameters": [
                     {
                         "type": "string",
@@ -229,12 +229,12 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Update book object",
+                        "description": "Full book fields",
                         "name": "input",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/models.UpdateBook"
+                            "$ref": "#/definitions/models.ReplaceBook"
                         }
                     }
                 ],
@@ -306,6 +306,83 @@ const docTemplate = `{
                 "responses": {
                     "204": {
                         "description": "Successfully deleted book"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "book not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "JwtAuth": []
+                    }
+                ],
+                "description": "Updates only fields present in the JSON body (at least one of title or author).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "books"
+                ],
+                "summary": "Partially update a book by ID (PATCH)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Book ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to change",
+                        "name": "input",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.PatchBook"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully updated book",
+                        "schema": {
+                            "$ref": "#/definitions/models.Book"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "string"
+                        }
                     },
                     "401": {
                         "description": "Unauthorized",
@@ -503,8 +580,23 @@ const docTemplate = `{
                 }
             }
         },
-        "models.UpdateBook": {
+        "models.PatchBook": {
             "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.ReplaceBook": {
+            "type": "object",
+            "required": [
+                "author",
+                "title"
+            ],
             "properties": {
                 "author": {
                     "type": "string"

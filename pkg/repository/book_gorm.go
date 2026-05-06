@@ -49,6 +49,34 @@ func (s *GormBookStore) UpdateFields(id uint, title, author string) (*models.Boo
 	return book, nil
 }
 
+// PatchFields updates only non-nil pointer fields (partial update).
+func (s *GormBookStore) PatchFields(id uint, title, author *string) (*models.Book, error) {
+	book, err := s.FirstByID(id)
+	if err != nil {
+		return nil, err
+	}
+	updates := map[string]interface{}{}
+	if title != nil {
+		updates["title"] = *title
+	}
+	if author != nil {
+		updates["author"] = *author
+	}
+	if len(updates) == 0 {
+		return book, nil
+	}
+	if err := s.db.Model(book).Updates(updates).Error; err != nil {
+		return nil, err
+	}
+	if title != nil {
+		book.Title = *title
+	}
+	if author != nil {
+		book.Author = *author
+	}
+	return book, nil
+}
+
 func (s *GormBookStore) DeleteByID(id uint) error {
 	book, err := s.FirstByID(id)
 	if err != nil {

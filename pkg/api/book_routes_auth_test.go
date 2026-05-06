@@ -29,6 +29,7 @@ func testBookWriteMiddlewareStack(t *testing.T) *gin.Engine {
 		}
 	}
 	r.PUT("/api/v1/books/:id", middleware.APIKeyAuth(), middleware.JWTAuth(), ok)
+	r.PATCH("/api/v1/books/:id", middleware.APIKeyAuth(), middleware.JWTAuth(), ok)
 	r.DELETE("/api/v1/books/:id", middleware.APIKeyAuth(), middleware.JWTAuth(), ok)
 	return r
 }
@@ -88,6 +89,19 @@ func TestBookWriteRoutesRequireAPIKeyAndJWT(t *testing.T) {
 		{
 			name:       "put valid api key and jwt",
 			method:     http.MethodPut,
+			apiKeyHdr:  apiKey,
+			authzHdr:   "Bearer " + token,
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "patch missing api key",
+			method:     http.MethodPatch,
+			wantStatus: http.StatusUnauthorized,
+			wantErrSub: "Unauthorized",
+		},
+		{
+			name:       "patch valid api key and jwt",
+			method:     http.MethodPatch,
 			apiKeyHdr:  apiKey,
 			authzHdr:   "Bearer " + token,
 			wantStatus: http.StatusOK,

@@ -92,6 +92,21 @@ func (mr *MockBookPersistenceMockRecorder) List(arg0, arg1 interface{}) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockBookPersistence)(nil).List), arg0, arg1)
 }
 
+// PatchFields mocks base method.
+func (m *MockBookPersistence) PatchFields(arg0 uint, arg1, arg2 *string) (*models.Book, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PatchFields", arg0, arg1, arg2)
+	ret0, _ := ret[0].(*models.Book)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PatchFields indicates an expected call of PatchFields.
+func (mr *MockBookPersistenceMockRecorder) PatchFields(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PatchFields", reflect.TypeOf((*MockBookPersistence)(nil).PatchFields), arg0, arg1, arg2)
+}
+
 // UpdateFields mocks base method.
 func (m *MockBookPersistence) UpdateFields(arg0 uint, arg1, arg2 string) (*models.Book, error) {
 	m.ctrl.T.Helper()

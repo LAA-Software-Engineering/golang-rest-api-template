@@ -35,12 +35,22 @@ definitions:
     - password
     - username
     type: object
-  models.UpdateBook:
+  models.PatchBook:
     properties:
       author:
         type: string
       title:
         type: string
+    type: object
+  models.ReplaceBook:
+    properties:
+      author:
+        type: string
+      title:
+        type: string
+    required:
+    - author
+    - title
     type: object
 externalDocs:
   description: OpenAPI
@@ -212,22 +222,23 @@ paths:
       summary: Find a book by ID
       tags:
       - books
-    put:
+    patch:
       consumes:
       - application/json
-      description: Update the book details for the given ID
+      description: Updates only fields present in the JSON body (at least one of title
+        or author).
       parameters:
       - description: Book ID
         in: path
         name: id
         required: true
         type: string
-      - description: Update book object
+      - description: Fields to change
         in: body
         name: input
         required: true
         schema:
-          $ref: '#/definitions/models.UpdateBook'
+          $ref: '#/definitions/models.PatchBook'
       produces:
       - application/json
       responses:
@@ -258,7 +269,56 @@ paths:
       security:
       - ApiKeyAuth: []
       - JwtAuth: []
-      summary: Update a book by ID
+      summary: Partially update a book by ID (PATCH)
+      tags:
+      - books
+    put:
+      consumes:
+      - application/json
+      description: Replaces both title and author. Use PATCH for partial updates.
+      parameters:
+      - description: Book ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Full book fields
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/models.ReplaceBook'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully updated book
+          schema:
+            $ref: '#/definitions/models.Book'
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+        "403":
+          description: Forbidden
+          schema:
+            type: string
+        "404":
+          description: book not found
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      security:
+      - ApiKeyAuth: []
+      - JwtAuth: []
+      summary: Replace a book by ID (PUT)
       tags:
       - books
   /login:

@@ -74,7 +74,7 @@ def get_book(book_id, jwt_token):
     return response.json()
 
 
-# Update a book
+# Update a book (PUT: both title and author required)
 def update_book(book_id, jwt_token):
     url = f"{BASE_URL}/books/{book_id}"
     auth_headers = {**headers, "Authorization": f"Bearer {jwt_token}"}
@@ -82,6 +82,17 @@ def update_book(book_id, jwt_token):
     response = requests.put(url, headers=auth_headers, data=data)
 
     assert response.status_code == 200, f"Failed to update book: {response.status_code}"
+    return response.json()
+
+
+# Partial update (PATCH: at least one field)
+def patch_book(book_id, jwt_token, payload: dict):
+    url = f"{BASE_URL}/books/{book_id}"
+    auth_headers = {**headers, "Authorization": f"Bearer {jwt_token}"}
+    data = json.dumps(payload)
+    response = requests.patch(url, headers=auth_headers, data=data)
+
+    assert response.status_code == 200, f"Failed to patch book: {response.status_code}"
     return response.json()
 
 
@@ -126,6 +137,15 @@ def test_update_book(jwt_token):
     updated_book = update_book(book_id, jwt_token)
     assert updated_book["data"]["author"] == "John Smith", "Book author not updated"
     assert updated_book["data"]["title"] == "Updated Book Title", "Book title not updated"
+
+
+def test_patch_book_title_only(jwt_token):
+    book = create_book(jwt_token)
+    book_id = book["data"]["id"]
+    orig_author = book["data"]["author"]
+    patched = patch_book(book_id, jwt_token, {"title": "Patched Title Only"})
+    assert patched["data"]["title"] == "Patched Title Only"
+    assert patched["data"]["author"] == orig_author
 
 
 def test_delete_book(jwt_token):

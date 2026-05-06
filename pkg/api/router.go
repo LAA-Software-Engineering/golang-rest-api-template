@@ -53,6 +53,7 @@ func NewRouter(logger *zap.Logger, mongoCollection *mongo.Collection, db *gorm.D
 		v1.POST("/books", middleware.APIKeyAuth(), middleware.JWTAuth(), books.CreateBook)
 		v1.GET("/books/:id", middleware.APIKeyAuth(), books.FindBook)
 		v1.PUT("/books/:id", middleware.APIKeyAuth(), middleware.JWTAuth(), books.UpdateBook)
+		v1.PATCH("/books/:id", middleware.APIKeyAuth(), middleware.JWTAuth(), books.PatchBook)
 		v1.DELETE("/books/:id", middleware.APIKeyAuth(), middleware.JWTAuth(), books.DeleteBook)
 
 		v1.POST("/login", middleware.APIKeyAuth(), users.LoginHandler)

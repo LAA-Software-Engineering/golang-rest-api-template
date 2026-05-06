@@ -28,6 +28,7 @@ type BookHandler interface {
 	CreateBook(c *gin.Context)
 	FindBook(c *gin.Context)
 	UpdateBook(c *gin.Context)
+	PatchBook(c *gin.Context)
 	DeleteBook(c *gin.Context)
 }
 
@@ -206,15 +207,15 @@ func (h *bookHandler) FindBook(c *gin.Context) {
 }
 
 // UpdateBook godoc
-// @Summary Update a book by ID
-// @Description Update the book details for the given ID
+// @Summary Replace a book by ID (PUT)
+// @Description Replaces both title and author. Use PATCH for partial updates.
 // @Tags books
 // @Security ApiKeyAuth
 // @Security JwtAuth
 // @Accept  json
 // @Produce  json
 // @Param id path string true "Book ID"
-// @Param input body models.UpdateBook true "Update book object"
+// @Param input body models.ReplaceBook true "Full book fields"
 // @Success 200 {object} models.Book "Successfully updated book"
 // @Failure 400 {string} string "Bad Request"
 // @Failure 401 {string} string "Unauthorized"
@@ -228,7 +229,7 @@ func (h *bookHandler) UpdateBook(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
-	var input models.UpdateBook
+	var input models.ReplaceBook
 	id, ok := parseIDParam(c)
 	if !ok {
 		return
@@ -237,7 +238,59 @@ func (h *bookHandler) UpdateBook(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	book, err := h.svc.UpdateBook(c.Request.Context(), actorID, id, input.Title, input.Author)
+	book, err := h.svc.ReplaceBook(c.Request.Context(), actorID, id, input.Title, input.Author)
+	if err != nil {
+		if repository.IsBookNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "book not found"})
+			return
+		}
+		if errors.Is(err, service.ErrBookForbidden) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update book"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": book})
+}
+
+// PatchBook godoc
+// @Summary Partially update a book by ID (PATCH)
+// @Description Updates only fields present in the JSON body (at least one of title or author).
+// @Tags books
+// @Security ApiKeyAuth
+// @Security JwtAuth
+// @Accept  json
+// @Produce  json
+// @Param id path string true "Book ID"
+// @Param input body models.PatchBook true "Fields to change"
+// @Success 200 {object} models.Book "Successfully updated book"
+// @Failure 400 {string} string "Bad Request"
+// @Failure 401 {string} string "Unauthorized"
+// @Failure 403 {string} string "Forbidden"
+// @Failure 404 {string} string "book not found"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /books/{id} [patch]
+func (h *bookHandler) PatchBook(c *gin.Context) {
+	actorID, ok := contextUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	id, ok := parseIDParam(c)
+	if !ok {
+		return
+	}
+	var input models.PatchBook
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if input.Title == nil && input.Author == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "at least one of title or author is required"})
+		return
+	}
+	book, err := h.svc.PatchBook(c.Request.Context(), actorID, id, input.Title, input.Author)
 	if err != nil {
 		if repository.IsBookNotFound(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "book not found"})

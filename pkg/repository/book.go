@@ -10,5 +10,6 @@ type BookPersistence interface {
 	Create(book *models.Book) error
 	FirstByID(id uint) (*models.Book, error)
 	UpdateFields(id uint, title, author string) (*models.Book, error)
+	PatchFields(id uint, title, author *string) (*models.Book, error)
 	DeleteByID(id uint) error
 }
