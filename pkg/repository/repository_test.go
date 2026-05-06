@@ -21,3 +21,8 @@ func TestIsUserNotFound(t *testing.T) {
 	assert.False(t, IsUserNotFound(errors.New("other")))
 	assert.True(t, IsUserNotFound(errors.Join(gorm.ErrRecordNotFound, errors.New("wrap"))))
 }
+
+func TestErrUserUsernameConflictIsDistinct(t *testing.T) {
+	assert.NotNil(t, ErrUserUsernameConflict)
+	assert.False(t, errors.Is(ErrUserUsernameConflict, gorm.ErrRecordNotFound))
+}

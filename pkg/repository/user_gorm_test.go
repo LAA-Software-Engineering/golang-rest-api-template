@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"errors"
 	"testing"
 
 	"golang-rest-api-template/pkg/auth"
@@ -61,4 +62,14 @@ func TestGormUserStoreCreateDuplicateUsername(t *testing.T) {
 
 	err = s.Create(&models.User{Username: "dup", Password: hash})
 	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrUserUsernameConflict)
+}
+
+func TestIsUsernameUniqueConstraintError(t *testing.T) {
+	t.Parallel()
+	assert.True(t, isUsernameUniqueConstraintError(gorm.ErrDuplicatedKey))
+	assert.True(t, isUsernameUniqueConstraintError(errors.New("UNIQUE constraint failed: users.username")))
+	assert.True(t, isUsernameUniqueConstraintError(errors.New(`duplicate key value violates unique constraint "users_username_key"`)))
+	assert.False(t, isUsernameUniqueConstraintError(nil))
+	assert.False(t, isUsernameUniqueConstraintError(errors.New("connection reset")))
 }

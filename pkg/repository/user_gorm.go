@@ -2,6 +2,8 @@ package repository
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 
 	"golang-rest-api-template/pkg/models"
 
@@ -27,7 +29,28 @@ func (s *GormUserStore) FindByUsername(username string) (*models.User, error) {
 }
 
 func (s *GormUserStore) Create(user *models.User) error {
-	return s.db.Create(user).Error
+	err := s.db.Create(user).Error
+	if err == nil {
+		return nil
+	}
+	if isUsernameUniqueConstraintError(err) {
+		return fmt.Errorf("%w: %v", ErrUserUsernameConflict, err)
+	}
+	return err
+}
+
+func isUsernameUniqueConstraintError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		return true
+	}
+	s := strings.ToLower(err.Error())
+	if strings.Contains(s, "unique constraint failed") {
+		return true
+	}
+	return strings.Contains(s, "duplicate key") && strings.Contains(s, "unique")
 }
 
 // IsUserNotFound reports whether err is a missing-user lookup from GORM.

@@ -4,14 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"golang-rest-api-template/pkg/auth"
 	"golang-rest-api-template/pkg/models"
 	"golang-rest-api-template/pkg/repository"
 
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 )
 
 // Sentinel errors for login / registration.
@@ -61,7 +59,7 @@ func (s *UserService) Register(_ context.Context, username, password string) err
 	}
 	newUser := &models.User{Username: username, Password: hashedPassword}
 	if err := s.users.Create(newUser); err != nil {
-		if registerUsernameConflict(err) {
+		if errors.Is(err, repository.ErrUserUsernameConflict) {
 			return ErrRegisterConflict
 		}
 		return fmtError(ErrRegisterSave, err)
@@ -71,21 +69,4 @@ func (s *UserService) Register(_ context.Context, username, password string) err
 
 func fmtError(sentinel error, cause error) error {
 	return fmt.Errorf("%w: %v", sentinel, cause)
-}
-
-func registerUsernameConflict(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, gorm.ErrDuplicatedKey) {
-		return true
-	}
-	s := strings.ToLower(err.Error())
-	if strings.Contains(s, "unique constraint failed") {
-		return true
-	}
-	if strings.Contains(s, "duplicate key") && strings.Contains(s, "unique") {
-		return true
-	}
-	return false
 }

@@ -77,7 +77,10 @@ func main() {
 	if db == nil {
 		log.Fatal("database: could not connect or migrate (see logs above)")
 	}
-	mongo := database.SetupMongoDB()
+	mongo, err := database.SetupMongoDB()
+	if err != nil {
+		log.Fatalf("mongo: %v", err)
+	}
 	logger, err := zap.NewProduction()
 	if err != nil {
 		log.Fatalf("logger: %v", err)
