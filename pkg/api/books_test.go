@@ -67,9 +67,12 @@ func TestHealthcheck(t *testing.T) {
 	// Call the actual Healthcheck method
 	h.Healthcheck(c)
 
-	// Check the response
 	assert.Equal(t, http.StatusOK, recorder.Code)
-	assert.Equal(t, "\"ok\"", recorder.Body.String())
+	var health struct {
+		Data string `json:"data"`
+	}
+	assert.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &health))
+	assert.Equal(t, "ok", health.Data)
 }
 
 func TestParseIDParamNilContext(t *testing.T) {

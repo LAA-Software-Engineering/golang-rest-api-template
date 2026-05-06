@@ -8,6 +8,7 @@ import (
 
 	"golang-rest-api-template/pkg/cache"
 	"golang-rest-api-template/pkg/httperr"
+	"golang-rest-api-template/pkg/httpresp"
 	"golang-rest-api-template/pkg/middleware"
 	"golang-rest-api-template/pkg/models"
 	"golang-rest-api-template/pkg/repository"
@@ -105,10 +106,10 @@ func contextUserID(c *gin.Context) (uint, bool) {
 // @Tags example
 // @Accept json
 // @Produce json
-// @Success 200 {string} ok
+// @Success 200 {object} models.HealthOKBody "Health payload in standard envelope"
 // @Router / [get]
 func (h *bookHandler) Healthcheck(c *gin.Context) {
-	c.JSON(http.StatusOK, "ok")
+	httpresp.OK(c, "ok")
 }
 
 // FindBooks godoc
@@ -144,7 +145,7 @@ func (h *bookHandler) FindBooks(c *gin.Context) {
 		}
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": books})
+	httpresp.OK(c, books)
 }
 
 // CreateBook godoc
@@ -177,7 +178,7 @@ func (h *bookHandler) CreateBook(c *gin.Context) {
 		httperr.Write(c, http.StatusInternalServerError, "Failed to create book")
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"data": book})
+	httpresp.Created(c, book)
 }
 
 // FindBook godoc
@@ -204,7 +205,7 @@ func (h *bookHandler) FindBook(c *gin.Context) {
 		httperr.Write(c, http.StatusInternalServerError, "Failed to load book")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": book})
+	httpresp.OK(c, book)
 }
 
 // UpdateBook godoc
@@ -252,7 +253,7 @@ func (h *bookHandler) UpdateBook(c *gin.Context) {
 		httperr.Write(c, http.StatusInternalServerError, "Failed to update book")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": book})
+	httpresp.OK(c, book)
 }
 
 // PatchBook godoc
@@ -304,7 +305,7 @@ func (h *bookHandler) PatchBook(c *gin.Context) {
 		httperr.Write(c, http.StatusInternalServerError, "Failed to update book")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": book})
+	httpresp.OK(c, book)
 }
 
 // DeleteBook godoc

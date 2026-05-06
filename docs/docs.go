@@ -39,9 +39,9 @@ const docTemplate = `{
                 "summary": "ping example",
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Health payload in standard envelope",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/models.HealthOKBody"
                         }
                     }
                 }
@@ -442,9 +442,9 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "JWT Token",
+                        "description": "JWT in standard envelope",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/models.LoginAPIResponse"
                         }
                     },
                     "400": {
@@ -499,9 +499,9 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "201": {
-                        "description": "Successfully registered",
+                        "description": "Registration message in standard envelope",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/models.RegisterAPIResponse"
                         }
                     },
                     "400": {
@@ -565,6 +565,30 @@ const docTemplate = `{
                 }
             }
         },
+        "models.HealthOKBody": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.LoginAPIResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/models.LoginTokenBody"
+                }
+            }
+        },
+        "models.LoginTokenBody": {
+            "type": "object",
+            "properties": {
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
         "models.LoginUser": {
             "type": "object",
             "required": [
@@ -587,6 +611,22 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.RegisterAPIResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/models.RegisterSuccessBody"
+                }
+            }
+        },
+        "models.RegisterSuccessBody": {
+            "type": "object",
+            "properties": {
+                "message": {
                     "type": "string"
                 }
             }
