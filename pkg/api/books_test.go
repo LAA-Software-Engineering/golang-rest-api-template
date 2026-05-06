@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"golang-rest-api-template/pkg/cache"
+	"golang-rest-api-template/pkg/middleware"
 	"golang-rest-api-template/pkg/models"
 	"golang-rest-api-template/pkg/repository"
 	"golang-rest-api-template/pkg/service"
@@ -27,6 +28,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"gorm.io/driver/sqlite"
 )
+
+// withBookActor injects the authenticated user id as JWTAuth would (for handler tests).
+func withBookActor(userID uint) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Set(middleware.ContextUserID, userID)
+		c.Set("username", "test-user")
+		c.Next()
+	}
+}
 
 func TestNewBookHandler(t *testing.T) {
 	ctrl := gomock.NewController(t)
@@ -160,7 +170,7 @@ func TestFindBooksLimitCappedAtMax(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 0; i < 120; i++ {
-		if err := db.Create(&models.Book{Title: "b" + strconv.Itoa(i), Author: "a"}).Error; err != nil {
+		if err := db.Create(&models.Book{OwnerID: 1, Title: "b" + strconv.Itoa(i), Author: "a"}).Error; err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -202,7 +212,7 @@ func TestCreateBookDatabaseError(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.POST("/books", h.CreateBook)
+	r.POST("/books", withBookActor(1), h.CreateBook)
 
 	inputBook := models.CreateBook{Title: "New Book", Author: "New Author"}
 	requestBody, err := json.Marshal(inputBook)
@@ -236,7 +246,7 @@ func TestCreateBookBindError(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.POST("/books", h.CreateBook)
+	r.POST("/books", withBookActor(1), h.CreateBook)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/books", bytes.NewBufferString("invalid json"))
@@ -245,6 +255,24 @@ func TestCreateBookBindError(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), "error")
+}
+
+func TestCreateBookRequiresAuthContext(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	h := NewBookHandler(repository.NewMockBookPersistence(ctrl), cache.NewMockCache(ctrl))
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.POST("/books", h.CreateBook)
+	body, err := json.Marshal(models.CreateBook{Title: "x", Author: "y"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/books", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
 func TestCreateBookCacheIncrError(t *testing.T) {
@@ -258,7 +286,7 @@ func TestCreateBookCacheIncrError(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.POST("/books", h.CreateBook)
+	r.POST("/books", withBookActor(1), h.CreateBook)
 
 	inputBook := models.CreateBook{Title: "New Book", Author: "New Author"}
 	requestBody, _ := json.Marshal(inputBook)
@@ -285,7 +313,7 @@ func TestUpdateBookInvalidID(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.PUT("/book/:id", h.UpdateBook)
+	r.PUT("/book/:id", withBookActor(1), h.UpdateBook)
 
 	updateInput := models.UpdateBook{Title: "New Title", Author: "New Author"}
 	requestBody, _ := json.Marshal(updateInput)
@@ -308,12 +336,12 @@ func TestUpdateBookNotFound(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.PUT("/book/:id", h.UpdateBook)
+	r.PUT("/book/:id", withBookActor(1), h.UpdateBook)
 
 	updateInput := models.UpdateBook{Title: "New Title", Author: "New Author"}
 	requestBody, _ := json.Marshal(updateInput)
 
-	mockStore.EXPECT().UpdateFields(uint(1), "New Title", "New Author").Return(nil, gorm.ErrRecordNotFound)
+	mockStore.EXPECT().FirstByID(uint(1)).Return(nil, gorm.ErrRecordNotFound)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("PUT", "/book/1", bytes.NewBuffer(requestBody))
@@ -322,6 +350,33 @@ func TestUpdateBookNotFound(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 	assert.Contains(t, w.Body.String(), "book not found")
+}
+
+func TestUpdateBookForbiddenWrongOwner(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&models.Book{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&models.Book{OwnerID: 1, Title: "mine", Author: "a"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	h := NewBookHandler(repository.NewGormBookStore(db), nil)
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.PUT("/book/:id", withBookActor(2), h.UpdateBook)
+	body, err := json.Marshal(models.UpdateBook{Title: "n", Author: "n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/book/1", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Contains(t, w.Body.String(), "forbidden")
 }
 
 func TestUpdateBookBindError(t *testing.T) {
@@ -333,7 +388,7 @@ func TestUpdateBookBindError(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.PUT("/book/:id", h.UpdateBook)
+	r.PUT("/book/:id", withBookActor(1), h.UpdateBook)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("PUT", "/book/1", bytes.NewBufferString("invalid json"))
@@ -394,7 +449,7 @@ func TestUpdateBookDatabaseErrorOnUpdates(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	existingBook := models.Book{Title: "Old Title", Author: "Old Author"}
+	existingBook := models.Book{OwnerID: 1, Title: "Old Title", Author: "Old Author"}
 	if err := db.Create(&existingBook).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -413,7 +468,7 @@ func TestUpdateBookDatabaseErrorOnUpdates(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.PUT("/book/:id", h.UpdateBook)
+	r.PUT("/book/:id", withBookActor(1), h.UpdateBook)
 
 	updateInput := models.UpdateBook{Title: "New Title", Author: "New Author"}
 	requestBody, err := json.Marshal(updateInput)
@@ -439,7 +494,7 @@ func TestUpdateBookBumpsListCacheGen(t *testing.T) {
 	if err := db.AutoMigrate(&models.Book{}); err != nil {
 		t.Fatal(err)
 	}
-	b := models.Book{Title: "t", Author: "a"}
+	b := models.Book{OwnerID: 1, Title: "t", Author: "a"}
 	if err := db.Create(&b).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -452,7 +507,7 @@ func TestUpdateBookBumpsListCacheGen(t *testing.T) {
 	h := NewBookHandler(repository.NewGormBookStore(db), mockCache)
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.PUT("/book/:id", h.UpdateBook)
+	r.PUT("/book/:id", withBookActor(1), h.UpdateBook)
 
 	body, err := json.Marshal(models.UpdateBook{Title: "n", Author: "n"})
 	if err != nil {
@@ -474,7 +529,7 @@ func TestDeleteBookBumpsListCacheGen(t *testing.T) {
 	if err := db.AutoMigrate(&models.Book{}); err != nil {
 		t.Fatal(err)
 	}
-	b := models.Book{Title: "del", Author: "me"}
+	b := models.Book{OwnerID: 1, Title: "del", Author: "me"}
 	if err := db.Create(&b).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -487,7 +542,7 @@ func TestDeleteBookBumpsListCacheGen(t *testing.T) {
 	h := NewBookHandler(repository.NewGormBookStore(db), mockCache)
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.DELETE("/book/:id", h.DeleteBook)
+	r.DELETE("/book/:id", withBookActor(1), h.DeleteBook)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodDelete, "/book/1", nil)
@@ -504,7 +559,7 @@ func TestDeleteBookInvalidID(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.DELETE("/book/:id", h.DeleteBook)
+	r.DELETE("/book/:id", withBookActor(1), h.DeleteBook)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest(http.MethodDelete, "/book/xyz", nil)
@@ -523,9 +578,9 @@ func TestDeleteBookNotFound(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.DELETE("/book/:id", h.DeleteBook)
+	r.DELETE("/book/:id", withBookActor(1), h.DeleteBook)
 
-	mockStore.EXPECT().DeleteByID(uint(1)).Return(gorm.ErrRecordNotFound)
+	mockStore.EXPECT().FirstByID(uint(1)).Return(nil, gorm.ErrRecordNotFound)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest(http.MethodDelete, "/book/1", nil)
@@ -544,7 +599,7 @@ func TestFindBooks(t *testing.T) {
 	if err := db.AutoMigrate(&models.Book{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Create(&models.Book{Title: "Book One", Author: "Author One"}).Error; err != nil {
+	if err := db.Create(&models.Book{OwnerID: 1, Title: "Book One", Author: "Author One"}).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -584,7 +639,7 @@ func TestCreateBook(t *testing.T) {
 	// Set up Gin
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.POST("/books", h.CreateBook)
+	r.POST("/books", withBookActor(1), h.CreateBook)
 
 	// Example data for the test
 	inputBook := models.CreateBook{Title: "New Book", Author: "New Author"}
@@ -701,8 +756,9 @@ func TestDeleteBook(t *testing.T) {
 	// Set up Gin for testing
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.DELETE("/book/:id", h.DeleteBook)
+	r.DELETE("/book/:id", withBookActor(1), h.DeleteBook)
 
+	mockStore.EXPECT().FirstByID(uint(1)).Return(&models.Book{ID: 1, OwnerID: 1, Title: "t", Author: "a"}, nil).Times(1)
 	mockStore.EXPECT().DeleteByID(uint(1)).Return(nil).Times(1)
 
 	w := httptest.NewRecorder()
@@ -722,9 +778,10 @@ func TestDeleteBookDatabaseErrorOnDelete(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
-	r.DELETE("/book/:id", h.DeleteBook)
+	r.DELETE("/book/:id", withBookActor(1), h.DeleteBook)
 
 	delErr := errors.New("delete failed")
+	mockStore.EXPECT().FirstByID(uint(1)).Return(&models.Book{ID: 1, OwnerID: 1}, nil).Times(1)
 	mockStore.EXPECT().DeleteByID(uint(1)).Return(delErr).Times(1)
 
 	w := httptest.NewRecorder()
@@ -744,7 +801,7 @@ func TestFindBooksSingleflightCoalescesDB(t *testing.T) {
 	if err := db.AutoMigrate(&models.Book{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Create(&models.Book{Title: "Coalesced", Author: "Author"}).Error; err != nil {
+	if err := db.Create(&models.Book{OwnerID: 1, Title: "Coalesced", Author: "Author"}).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -839,7 +896,7 @@ func TestFindBooksLeadingZerosShareListCache(t *testing.T) {
 	if err := db.AutoMigrate(&models.Book{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Create(&models.Book{Title: "One", Author: "A"}).Error; err != nil {
+	if err := db.Create(&models.Book{OwnerID: 1, Title: "One", Author: "A"}).Error; err != nil {
 		t.Fatal(err)
 	}
 

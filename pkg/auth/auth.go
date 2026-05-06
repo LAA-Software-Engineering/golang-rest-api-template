@@ -32,6 +32,8 @@ var (
 // Claims carries custom JWT fields plus registered (standard) JWT claims.
 type Claims struct {
 	Username string `json:"username"`
+	// UserID is the authenticated users.id used for authorization (must be non-zero).
+	UserID uint `json:"user_id"`
 	jwt.RegisteredClaims
 }
 
@@ -90,7 +92,12 @@ func HashPassword(password string) (string, error) {
 	return string(bytes), err
 }
 
-func GenerateToken(username string) (string, error) {
+// GenerateToken issues an HS256 JWT with username and user_id claims. userID must
+// be non-zero (database primary key of the authenticated user).
+func GenerateToken(username string, userID uint) (string, error) {
+	if userID == 0 {
+		return "", fmt.Errorf("auth.GenerateToken: user id must be non-zero")
+	}
 	signingMu.RLock()
 	key := jwtSigningKey
 	signingMu.RUnlock()
@@ -101,6 +108,7 @@ func GenerateToken(username string) (string, error) {
 	exp := time.Now().Add(5 * time.Minute)
 	claims := &Claims{
 		Username: username,
+		UserID:   userID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(exp),
 		},

@@ -53,7 +53,7 @@ func TestJWTAuthSigningKeyNotConfiguredReturns503(t *testing.T) {
 }
 
 func TestJWTAuthValidBearer(t *testing.T) {
-	token, err := auth.GenerateToken("middleware-user")
+	token, err := auth.GenerateToken("middleware-user", 1)
 	if err != nil {
 		t.Fatalf("GenerateToken: %v", err)
 	}
@@ -67,9 +67,33 @@ func TestJWTAuthValidBearer(t *testing.T) {
 	}
 }
 
+func TestJWTAuthRejectsZeroUserIDClaim(t *testing.T) {
+	key := auth.JWTSigningKey()
+	claims := &auth.Claims{
+		Username: "legacy",
+		UserID:   0,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		},
+	}
+	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	s, err := tok.SignedString(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := testRouterJWTAuthOnly(t)
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req.Header.Set("Authorization", "Bearer "+s)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
 func TestJWTAuthSetsUsernameContext(t *testing.T) {
 	const wantUser = "ctx-user"
-	token, err := auth.GenerateToken(wantUser)
+	token, err := auth.GenerateToken(wantUser, 99)
 	if err != nil {
 		t.Fatalf("GenerateToken: %v", err)
 	}
@@ -98,8 +122,39 @@ func TestJWTAuthSetsUsernameContext(t *testing.T) {
 	}
 }
 
+func TestJWTAuthSetsUserIDContext(t *testing.T) {
+	const wantID uint = 77
+	token, err := auth.GenerateToken("uid-ctx-user", wantID)
+	if err != nil {
+		t.Fatalf("GenerateToken: %v", err)
+	}
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	var got uint
+	r.GET("/p", JWTAuth(), func(c *gin.Context) {
+		v, ok := c.Get(ContextUserID)
+		if !ok {
+			t.Error("user id not in context")
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		got, _ = v.(uint)
+		c.Status(http.StatusOK)
+	})
+	req := httptest.NewRequest(http.MethodGet, "/p", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: %d body=%q", rec.Code, rec.Body.String())
+	}
+	if got != wantID {
+		t.Fatalf("user id: got %d want %d", got, wantID)
+	}
+}
+
 func TestJWTAuthRejectsBadRequests(t *testing.T) {
-	validHS256, err := auth.GenerateToken("ok-user")
+	validHS256, err := auth.GenerateToken("ok-user", 1)
 	if err != nil {
 		t.Fatalf("GenerateToken: %v", err)
 	}
@@ -107,6 +162,7 @@ func TestJWTAuthRejectsBadRequests(t *testing.T) {
 	exp := time.Now().Add(time.Hour)
 	claims := &auth.Claims{
 		Username: "other",
+		UserID:   1,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(exp),
 		},
@@ -124,6 +180,7 @@ func TestJWTAuthRejectsBadRequests(t *testing.T) {
 
 	expiredClaims := &auth.Claims{
 		Username: "expired-user",
+		UserID:   1,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-time.Hour)),
 		},
@@ -137,6 +194,7 @@ func TestJWTAuthRejectsBadRequests(t *testing.T) {
 	wrongKey := bytes.Repeat([]byte("n"), auth.MinJWTSecretKeyBytes)
 	wrongSigClaims := &auth.Claims{
 		Username: "wrong-sig-user",
+		UserID:   1,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 		},
@@ -228,7 +286,7 @@ func TestJWTAuthRejectsBadRequests(t *testing.T) {
 }
 
 func TestJWTAuthConcurrentValidRequests(t *testing.T) {
-	token, err := auth.GenerateToken("concurrent-jwt-user")
+	token, err := auth.GenerateToken("concurrent-jwt-user", 1)
 	if err != nil {
 		t.Fatalf("GenerateToken: %v", err)
 	}

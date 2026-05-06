@@ -79,7 +79,7 @@ func TestUserServiceLoginSuccess(t *testing.T) {
 	assert.NoError(t, err)
 	store := &fakeUserStore{
 		findFn: func(username string) (*models.User, error) {
-			return &models.User{Username: "alice", Password: string(hash)}, nil
+			return &models.User{ID: 100, Username: "alice", Password: string(hash)}, nil
 		},
 	}
 	svc := NewUserService(store)

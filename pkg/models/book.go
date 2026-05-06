@@ -4,6 +4,7 @@ import "time"
 
 type Book struct {
 	ID        uint      `json:"id" gorm:"primary_key"`
+	OwnerID   uint      `json:"owner_id" gorm:"index;not null"`
 	Title     string    `json:"title"`
 	Author    string    `json:"author"`
 	CreatedAt time.Time `json:"created_at" gorm:"autoCreateTime"`

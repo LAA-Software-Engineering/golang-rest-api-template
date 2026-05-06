@@ -27,14 +27,15 @@ func TestHashPassword(t *testing.T) {
 
 func TestGenerateToken(t *testing.T) {
 	user := "chud"
-	token, err := GenerateToken(user)
+	token, err := GenerateToken(user, 1)
 	assert.Nil(t, err)
 	assert.NotEmpty(t, token)
 }
 
 func TestGenerateTokenRoundTripUsernameClaim(t *testing.T) {
 	const wantUser = "alice"
-	tokenStr, err := GenerateToken(wantUser)
+	const wantID uint = 42
+	tokenStr, err := GenerateToken(wantUser, wantID)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -48,6 +49,7 @@ func TestGenerateTokenRoundTripUsernameClaim(t *testing.T) {
 		return
 	}
 	assert.Equal(t, wantUser, parsed.Username)
+	assert.Equal(t, wantID, parsed.UserID)
 }
 
 func TestGenerateRandomKey(t *testing.T) {
@@ -71,7 +73,7 @@ func TestSetJWTSigningKeyAcceptsMinimumLength(t *testing.T) {
 		return
 	}
 	assert.Equal(t, secret, JWTSigningKey())
-	_, err = GenerateToken("user-after-rotate")
+	_, err = GenerateToken("user-after-rotate", 1)
 	assert.NoError(t, err)
 	// Restore default for other tests in the package.
 	assert.NoError(t, SetJWTSigningKey(bytes.Repeat([]byte("k"), MinJWTSecretKeyBytes)))
@@ -83,9 +85,14 @@ func TestGenerateTokenErrorWhenSigningKeyUnset(t *testing.T) {
 	t.Cleanup(func() {
 		assert.NoError(t, SetJWTSigningKey(prev))
 	})
-	_, err := GenerateToken("any")
+	_, err := GenerateToken("any", 1)
 	assert.Error(t, err)
 	assert.True(t, errors.Is(err, ErrJWTSigningKeyNotConfigured))
+}
+
+func TestGenerateTokenRejectsZeroUserID(t *testing.T) {
+	_, err := GenerateToken("u", 0)
+	assert.Error(t, err)
 }
 
 func TestJWTKeyFuncRejectsNonHS256Algorithms(t *testing.T) {
@@ -93,6 +100,7 @@ func TestJWTKeyFuncRejectsNonHS256Algorithms(t *testing.T) {
 	exp := time.Now().Add(time.Hour)
 	baseClaims := Claims{
 		Username: "attacker",
+		UserID:   1,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(exp),
 		},
@@ -127,6 +135,7 @@ func TestJWTKeyFuncAcceptsHS256(t *testing.T) {
 	key := []byte("jwt-keyfunc-hs256-accept-secret!")
 	claims := &Claims{
 		Username: "legit",
+		UserID:   9,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 		},

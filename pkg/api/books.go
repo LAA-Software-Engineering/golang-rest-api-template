@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"golang-rest-api-template/pkg/cache"
+	"golang-rest-api-template/pkg/middleware"
 	"golang-rest-api-template/pkg/models"
 	"golang-rest-api-template/pkg/repository"
 	"golang-rest-api-template/pkg/service"
@@ -80,6 +81,19 @@ func parseOffsetLimit(c *gin.Context) (offset, limit int, ok bool) {
 	return o, l, true
 }
 
+// contextUserID returns the authenticated users.id set by middleware.JWTAuth.
+func contextUserID(c *gin.Context) (uint, bool) {
+	if c == nil {
+		return 0, false
+	}
+	v, ok := c.Get(middleware.ContextUserID)
+	if !ok {
+		return 0, false
+	}
+	id, ok := v.(uint)
+	return id, ok && id > 0
+}
+
 // @BasePath /api/v1
 
 // Healthcheck godoc
@@ -146,12 +160,17 @@ func (h *bookHandler) FindBooks(c *gin.Context) {
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /books [post]
 func (h *bookHandler) CreateBook(c *gin.Context) {
+	ownerID, ok := contextUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 	var input models.CreateBook
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	book, err := h.svc.CreateBook(c.Request.Context(), input.Title, input.Author)
+	book, err := h.svc.CreateBook(c.Request.Context(), ownerID, input.Title, input.Author)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create book"})
 		return
@@ -199,10 +218,16 @@ func (h *bookHandler) FindBook(c *gin.Context) {
 // @Success 200 {object} models.Book "Successfully updated book"
 // @Failure 400 {string} string "Bad Request"
 // @Failure 401 {string} string "Unauthorized"
+// @Failure 403 {string} string "Forbidden"
 // @Failure 404 {string} string "book not found"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /books/{id} [put]
 func (h *bookHandler) UpdateBook(c *gin.Context) {
+	actorID, ok := contextUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 	var input models.UpdateBook
 	id, ok := parseIDParam(c)
 	if !ok {
@@ -212,10 +237,14 @@ func (h *bookHandler) UpdateBook(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	book, err := h.svc.UpdateBook(c.Request.Context(), id, input.Title, input.Author)
+	book, err := h.svc.UpdateBook(c.Request.Context(), actorID, id, input.Title, input.Author)
 	if err != nil {
 		if repository.IsBookNotFound(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "book not found"})
+			return
+		}
+		if errors.Is(err, service.ErrBookForbidden) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update book"})
@@ -234,17 +263,27 @@ func (h *bookHandler) UpdateBook(c *gin.Context) {
 // @Param id path string true "Book ID"
 // @Success 204 "Successfully deleted book"
 // @Failure 401 {string} string "Unauthorized"
+// @Failure 403 {string} string "Forbidden"
 // @Failure 404 {string} string "book not found"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /books/{id} [delete]
 func (h *bookHandler) DeleteBook(c *gin.Context) {
+	actorID, ok := contextUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 	id, ok := parseIDParam(c)
 	if !ok {
 		return
 	}
-	if err := h.svc.DeleteBook(c.Request.Context(), id); err != nil {
+	if err := h.svc.DeleteBook(c.Request.Context(), actorID, id); err != nil {
 		if repository.IsBookNotFound(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "book not found"})
+			return
+		}
+		if errors.Is(err, service.ErrBookForbidden) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete book"})

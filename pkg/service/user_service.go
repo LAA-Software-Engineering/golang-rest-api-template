@@ -16,12 +16,12 @@ import (
 
 // Sentinel errors for login / registration.
 var (
-	ErrInvalidLogin      = errors.New("service: invalid username or password")
-	ErrLoginDB           = errors.New("service: login database error")
-	ErrTokenGenerate     = errors.New("service: token generation failed")
-	ErrRegisterConflict  = errors.New("service: username already taken")
-	ErrRegisterHash      = errors.New("service: password hash failed")
-	ErrRegisterSave      = errors.New("service: could not save user")
+	ErrInvalidLogin     = errors.New("service: invalid username or password")
+	ErrLoginDB          = errors.New("service: login database error")
+	ErrTokenGenerate    = errors.New("service: token generation failed")
+	ErrRegisterConflict = errors.New("service: username already taken")
+	ErrRegisterHash     = errors.New("service: password hash failed")
+	ErrRegisterSave     = errors.New("service: could not save user")
 )
 
 // UserService handles authentication use-cases without Gin.
@@ -46,7 +46,7 @@ func (s *UserService) Login(_ context.Context, username, password string) (token
 	if err := bcrypt.CompareHashAndPassword([]byte(dbUser.Password), []byte(password)); err != nil {
 		return "", ErrInvalidLogin
 	}
-	tok, err := auth.GenerateToken(dbUser.Username)
+	tok, err := auth.GenerateToken(dbUser.Username, dbUser.ID)
 	if err != nil {
 		return "", fmtError(ErrTokenGenerate, err)
 	}

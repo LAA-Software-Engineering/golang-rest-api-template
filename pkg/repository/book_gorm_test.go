@@ -27,8 +27,8 @@ func TestGormBookStoreListCreateFirstByID(t *testing.T) {
 	db := testBookDB(t)
 	s := NewGormBookStore(db)
 
-	assert.NoError(t, s.Create(&models.Book{Title: "A", Author: "1"}))
-	assert.NoError(t, s.Create(&models.Book{Title: "B", Author: "2"}))
+	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "A", Author: "1"}))
+	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "B", Author: "2"}))
 
 	list, err := s.List(0, 10)
 	if !assert.NoError(t, err) {
@@ -58,7 +58,7 @@ func TestGormBookStoreListOffsetLimit(t *testing.T) {
 	db := testBookDB(t)
 	s := NewGormBookStore(db)
 	for i := 0; i < 5; i++ {
-		assert.NoError(t, s.Create(&models.Book{Title: string(rune('A' + i)), Author: "x"}))
+		assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: string(rune('A' + i)), Author: "x"}))
 	}
 
 	page, err := s.List(1, 2)
@@ -71,7 +71,7 @@ func TestGormBookStoreListOffsetLimit(t *testing.T) {
 func TestGormBookStoreUpdateFields(t *testing.T) {
 	db := testBookDB(t)
 	s := NewGormBookStore(db)
-	b := &models.Book{Title: "old", Author: "old"}
+	b := &models.Book{OwnerID: 1, Title: "old", Author: "old"}
 	assert.NoError(t, s.Create(b))
 
 	out, err := s.UpdateFields(b.ID, "newt", "newa")
@@ -100,7 +100,7 @@ func TestGormBookStoreUpdateFieldsNotFound(t *testing.T) {
 func TestGormBookStoreDeleteByID(t *testing.T) {
 	db := testBookDB(t)
 	s := NewGormBookStore(db)
-	b := &models.Book{Title: "gone", Author: "soon"}
+	b := &models.Book{OwnerID: 1, Title: "gone", Author: "soon"}
 	assert.NoError(t, s.Create(b))
 
 	assert.NoError(t, s.DeleteByID(b.ID))
@@ -120,7 +120,7 @@ func TestGormBookStoreDeleteByIDNotFound(t *testing.T) {
 func TestGormBookStoreListConcurrent(t *testing.T) {
 	db := testBookDB(t)
 	s := NewGormBookStore(db)
-	assert.NoError(t, s.Create(&models.Book{Title: "c", Author: "c"}))
+	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "c", Author: "c"}))
 
 	var wg sync.WaitGroup
 	const n = 32
