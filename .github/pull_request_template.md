@@ -7,6 +7,7 @@
 <!-- Mark the relevant option with an “x” (e.g. `- [x] Bug fix`). -->
 
 - [ ] Bug fix
+- [ ] Refactor
 - [ ] New feature
 - [ ] Breaking change (describe impact below)
 - [ ] Documentation only
