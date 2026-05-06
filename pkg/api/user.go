@@ -11,19 +11,19 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// UserRepository is the HTTP surface for auth routes (Gin handlers).
-type UserRepository interface {
+// UserHandler defines Gin handlers for auth routes (HTTP layer only).
+type UserHandler interface {
 	LoginHandler(c *gin.Context)
 	RegisterHandler(c *gin.Context)
 }
 
-type userRepository struct {
+type userHandler struct {
 	svc *service.UserService
 }
 
-// NewUserRepository wires persistence into user HTTP handlers.
-func NewUserRepository(store repository.UserPersistence) *userRepository {
-	return &userRepository{svc: service.NewUserService(store)}
+// NewUserHandler wires persistence into user HTTP handlers.
+func NewUserHandler(store repository.UserPersistence) *userHandler {
+	return &userHandler{svc: service.NewUserService(store)}
 }
 
 // @BasePath /api/v1
@@ -42,13 +42,13 @@ func NewUserRepository(store repository.UserPersistence) *userRepository {
 // @Failure 401 {string} string "Unauthorized"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /login [post]
-func (r *userRepository) LoginHandler(c *gin.Context) {
+func (h *userHandler) LoginHandler(c *gin.Context) {
 	var incoming models.LoginUser
 	if err := c.ShouldBindJSON(&incoming); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	token, err := r.svc.Login(c.Request.Context(), incoming.Username, incoming.Password)
+	token, err := h.svc.Login(c.Request.Context(), incoming.Username, incoming.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrInvalidLogin):
@@ -77,13 +77,13 @@ func (r *userRepository) LoginHandler(c *gin.Context) {
 // @Failure 409 {string} string "Conflict"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /register [post]
-func (r *userRepository) RegisterHandler(c *gin.Context) {
+func (h *userHandler) RegisterHandler(c *gin.Context) {
 	var user models.LoginUser
 	if err := c.ShouldBindJSON(&user); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := r.svc.Register(c.Request.Context(), user.Username, user.Password); err != nil {
+	if err := h.svc.Register(c.Request.Context(), user.Username, user.Password); err != nil {
 		switch {
 		case errors.Is(err, service.ErrRegisterConflict):
 			c.JSON(http.StatusConflict, gin.H{"error": "username already taken"})
