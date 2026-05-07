@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"golang-rest-api-template/pkg/auth"
 	"golang-rest-api-template/pkg/models"
+	"golang-rest-api-template/pkg/repository"
 
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/bcrypt"
@@ -91,18 +93,7 @@ func TestUserServiceLoginSuccess(t *testing.T) {
 func TestUserServiceRegisterConflictDuplicatedKey(t *testing.T) {
 	store := &fakeUserStore{
 		createFn: func(user *models.User) error {
-			return gorm.ErrDuplicatedKey
-		},
-	}
-	svc := NewUserService(store)
-	err := svc.Register(context.Background(), "dup", "password123")
-	assert.ErrorIs(t, err, ErrRegisterConflict)
-}
-
-func TestUserServiceRegisterConflictSQLiteMessage(t *testing.T) {
-	store := &fakeUserStore{
-		createFn: func(user *models.User) error {
-			return errors.New("UNIQUE constraint failed: users.username")
+			return fmt.Errorf("%w: %v", repository.ErrUserUsernameConflict, gorm.ErrDuplicatedKey)
 		},
 	}
 	svc := NewUserService(store)
