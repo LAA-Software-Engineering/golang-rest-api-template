@@ -57,6 +57,9 @@ func (s *BookService) cacheGeneration(ctx context.Context) int64 {
 	return n
 }
 
+// bumpListCacheGeneration invalidates cached list pages by incrementing a global
+// generation counter (BooksListCacheGenKey). Cached keys embed the generation, so
+// readers miss without scanning or KEYS on Redis (#123).
 func (s *BookService) bumpListCacheGeneration(ctx context.Context) {
 	if s == nil || s.redis == nil {
 		return
