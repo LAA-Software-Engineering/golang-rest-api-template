@@ -1,5 +1,7 @@
 package cache
 
+//go:generate mockgen -source=cache.go -destination=cache_mock.go -package=cache
+
 import (
 	"context"
 	"crypto/tls"
@@ -12,11 +14,14 @@ import (
 	"github.com/go-redis/redis/v8"
 )
 
+// Cache abstracts Redis operations used by the app. Book list caching invalidates
+// via a monotonic generation counter (see pkg/service BooksListCacheGenKey); it
+// must not use Redis KEYS (O(n) on the keyspace). Callers needing pattern deletes
+// should use Del with explicit keys or extend this interface with SCAN-based APIs.
 type Cache interface {
 	Get(ctx context.Context, key string) *redis.StringCmd
 	Set(ctx context.Context, key string, value interface{}, expiration time.Duration) *redis.StatusCmd
 	Incr(ctx context.Context, key string) *redis.IntCmd
-	Keys(context.Context, string) *redis.StringSliceCmd
 	Del(context.Context, ...string) *redis.IntCmd
 }
 
