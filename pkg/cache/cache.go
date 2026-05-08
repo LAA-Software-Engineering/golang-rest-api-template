@@ -25,6 +25,9 @@ type Cache interface {
 	Del(context.Context, ...string) *redis.IntCmd
 }
 
+// App Redis client must satisfy Cache without requiring Redis KEYS on the keyspace.
+var _ Cache = (*redis.Client)(nil)
+
 // NewRedisClient builds a go-redis client from environment variables.
 // See redisOptionsFromEnv for supported keys and defaults.
 func NewRedisClient() (*redis.Client, error) {
