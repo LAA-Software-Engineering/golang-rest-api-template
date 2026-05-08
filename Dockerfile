@@ -1,5 +1,5 @@
 # Align with go.mod and CI.
-FROM golang:1.25-bookworm AS builder
+FROM golang:1.25.10-bookworm AS builder
 
 WORKDIR /app
 
