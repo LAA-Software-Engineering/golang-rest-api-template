@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -150,6 +152,72 @@ func TestListBooksStoreError(t *testing.T) {
 	_, err := svc.ListBooks(context.Background(), 0, 10)
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, ErrListBooksDB)
+}
+
+func TestListBooksSingleflightCoalescesConcurrentMiss(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockRedis := cache.NewMockCache(ctrl)
+
+	var listCalls atomic.Int32
+	store := &fakeBookStore{
+		listFn: func(offset, limit int) ([]models.Book, error) {
+			listCalls.Add(1)
+			time.Sleep(25 * time.Millisecond)
+			return []models.Book{{ID: 1, Title: "t", Author: "a"}}, nil
+		},
+	}
+
+	dataKey := BooksListDataCacheKey(0, 0, 10)
+	var mu sync.Mutex
+	cached := ""
+
+	mockRedis.EXPECT().Get(gomock.Any(), BooksListCacheGenKey).Return(redis.NewStringResult("", redis.Nil)).AnyTimes()
+	mockRedis.EXPECT().Get(gomock.Any(), dataKey).DoAndReturn(func(_ context.Context, key string) *redis.StringCmd {
+		if key != dataKey {
+			return redis.NewStringResult("", errors.New("unexpected key"))
+		}
+		mu.Lock()
+		s := cached
+		mu.Unlock()
+		if s == "" {
+			return redis.NewStringResult("", redis.Nil)
+		}
+		return redis.NewStringResult(s, nil)
+	}).MinTimes(40)
+	mockRedis.EXPECT().Set(gomock.Any(), dataKey, gomock.Any(), time.Minute).DoAndReturn(func(_ context.Context, _ string, v interface{}, _ time.Duration) *redis.StatusCmd {
+		var b []byte
+		switch x := v.(type) {
+		case []byte:
+			b = x
+		case string:
+			b = []byte(x)
+		default:
+			var err error
+			b, err = json.Marshal(x)
+			if err != nil {
+				return redis.NewStatusResult("", err)
+			}
+		}
+		mu.Lock()
+		cached = string(b)
+		mu.Unlock()
+		return redis.NewStatusResult("OK", nil)
+	}).Times(1)
+
+	svc := NewBookService(store, mockRedis)
+	const n = 40
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			_, _ = svc.ListBooks(context.Background(), 0, 10)
+		}()
+	}
+	wg.Wait()
+
+	assert.Equal(t, int32(1), listCalls.Load(), "store.List must run once for coalesced cache misses (#124)")
 }
 
 func TestListBooksRedisSetError(t *testing.T) {
