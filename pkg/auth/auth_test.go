@@ -8,6 +8,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func init() {
@@ -23,6 +24,58 @@ func TestHashPassword(t *testing.T) {
 	hashedPassword, err := HashPassword(password)
 	assert.Nil(t, err)
 	assert.NotEmpty(t, hashedPassword)
+}
+
+func TestHashPasswordUsesDefaultBcryptCost(t *testing.T) {
+	t.Setenv("BCRYPT_COST", "")
+	hash, err := HashPassword("secret")
+	if !assert.NoError(t, err) {
+		return
+	}
+	cost, err := bcrypt.Cost([]byte(hash))
+	if !assert.NoError(t, err) {
+		return
+	}
+	assert.Equal(t, defaultBcryptCost, cost)
+}
+
+func TestHashPasswordUsesBCRYPT_COST(t *testing.T) {
+	t.Setenv("BCRYPT_COST", "10")
+	hash, err := HashPassword("secret")
+	if !assert.NoError(t, err) {
+		return
+	}
+	cost, err := bcrypt.Cost([]byte(hash))
+	if !assert.NoError(t, err) {
+		return
+	}
+	assert.Equal(t, 10, cost)
+}
+
+func TestHashPasswordClampsLowBCRYPT_COSTToMin(t *testing.T) {
+	t.Setenv("BCRYPT_COST", "8")
+	hash, err := HashPassword("secret")
+	if !assert.NoError(t, err) {
+		return
+	}
+	cost, err := bcrypt.Cost([]byte(hash))
+	if !assert.NoError(t, err) {
+		return
+	}
+	assert.Equal(t, minBcryptCost, cost)
+}
+
+func TestHashPasswordInvalidBcryptCostEnvFallsBackToDefault(t *testing.T) {
+	t.Setenv("BCRYPT_COST", "not-a-number")
+	hash, err := HashPassword("secret")
+	if !assert.NoError(t, err) {
+		return
+	}
+	cost, err := bcrypt.Cost([]byte(hash))
+	if !assert.NoError(t, err) {
+		return
+	}
+	assert.Equal(t, defaultBcryptCost, cost)
 }
 
 func TestGenerateToken(t *testing.T) {

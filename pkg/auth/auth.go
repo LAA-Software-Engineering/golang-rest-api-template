@@ -5,6 +5,10 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log"
+	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +19,14 @@ import (
 // MinJWTSecretKeyBytes is the minimum accepted length for the HMAC JWT signing
 // secret (raw bytes, not base64-decoded length).
 const MinJWTSecretKeyBytes = 32
+
+// defaultBcryptCost is the bcrypt work factor for new password hashes (#128).
+// The audit recommended evaluating the 10–12 range; 12 balances UX and strength.
+const defaultBcryptCost = 12
+
+// minBcryptCost is the lowest cost we accept from BCRYPT_COST (below this is weak
+// for production-style deployments).
+const minBcryptCost = 10
 
 var (
 	// ErrJWTSigningKeyNotConfigured is returned by GenerateToken when
@@ -88,8 +100,34 @@ func JWTKeyFunc(key []byte) jwt.Keyfunc {
 }
 
 func HashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
+	cost := bcryptCostForPasswordHashing()
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), cost)
 	return string(bytes), err
+}
+
+// bcryptCostForPasswordHashing returns the bcrypt cost for HashPassword.
+// BCRYPT_COST overrides the default (12); it must parse as an integer in
+// [minBcryptCost, bcrypt.MaxCost]. Invalid or out-of-range values log a warning
+// and fall back to defaultBcryptCost.
+func bcryptCostForPasswordHashing() int {
+	s := strings.TrimSpace(os.Getenv("BCRYPT_COST"))
+	if s == "" {
+		return defaultBcryptCost
+	}
+	c, err := strconv.Atoi(s)
+	if err != nil {
+		log.Printf("auth: invalid BCRYPT_COST=%q, using default cost %d", s, defaultBcryptCost)
+		return defaultBcryptCost
+	}
+	if c < bcrypt.MinCost || c > bcrypt.MaxCost {
+		log.Printf("auth: invalid BCRYPT_COST=%d (must be %d–%d), using default cost %d", c, bcrypt.MinCost, bcrypt.MaxCost, defaultBcryptCost)
+		return defaultBcryptCost
+	}
+	if c < minBcryptCost {
+		log.Printf("auth: BCRYPT_COST=%d is below recommended minimum %d, using %d", c, minBcryptCost, minBcryptCost)
+		return minBcryptCost
+	}
+	return c
 }
 
 // GenerateToken issues an HS256 JWT with username and user_id claims. userID must
