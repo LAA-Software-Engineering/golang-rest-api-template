@@ -157,6 +157,7 @@ Names below match `os.Getenv` usage in this repository:
 | `GIN_MODE` | Standard Gin variable: `debug` (default if unset), `release` (enables Security + XSS middleware in `pkg/api/router.go`), or `test` |
 | `GIN_TRUSTED_PROXIES` | Optional comma-separated CIDRs trusted for `X-Forwarded-For` / `ClientIP` (`pkg/api/router.go`). If unset, only the direct peer address is used. |
 | `REQUEST_MAX_BODY_BYTES` | Optional cap on JSON/body bytes for `POST`/`PUT`/`PATCH` (default `1048576`, i.e. 1 MiB; `pkg/middleware/max_body.go`). |
+| `REQUEST_CONTEXT_TIMEOUT` | Optional per-request deadline for **`/api/v1/**` only** (Go duration, e.g. `60s`); default `60s`. Set to `0`, `off`, or `none` to disable (`pkg/middleware/request_timeout.go`). Probes and Swagger are outside this group. |
 
 To generate URL-safe random values for `JWT_SECRET_KEY` and `API_SECRET_KEY`, run:
 

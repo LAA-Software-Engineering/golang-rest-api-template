@@ -47,6 +47,7 @@ func NewRouter(logger *zap.Logger, mongoCollection *mongo.Collection, db *gorm.D
 
 	docs.SwaggerInfo.BasePath = "/api/v1"
 	v1 := r.Group("/api/v1")
+	v1.Use(middleware.RequestContextTimeoutFromEnv())
 	{
 		v1.GET("/", books.Healthcheck)
 		v1.GET("/books", middleware.APIKeyAuth(), books.FindBooks)
