@@ -153,6 +153,7 @@ Names below match `os.Getenv` usage in this repository:
 | `REDIS_READ_TIMEOUT` | Read timeout (default `3s`) |
 | `REDIS_WRITE_TIMEOUT` | Write timeout (default `3s`) |
 | `JWT_SECRET_KEY` | Secret for signing JWTs (`pkg/auth/auth.go`) |
+| `BCRYPT_COST` | Optional bcrypt work factor for **new** password hashes (integer `10`–`31`; default **`12`**, was 14). Values below `10` clamp to `10` with a log line. See [#128](https://github.com/LAA-Software-Engineering/golang-rest-api-template/issues/128). |
 | `API_SECRET_KEY` | Secret compared to the `X-API-Key` header (`pkg/middleware/api_key.go`) |
 | `GIN_MODE` | Standard Gin variable: `debug` (default if unset), `release` (enables Security + XSS middleware in `pkg/api/router.go`), or `test` |
 | `GIN_TRUSTED_PROXIES` | Optional comma-separated CIDRs trusted for `X-Forwarded-For` / `ClientIP` (`pkg/api/router.go`). If unset, only the direct peer address is used. |
