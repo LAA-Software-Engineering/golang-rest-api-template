@@ -6,4 +6,4 @@ packaging==24.1
 pluggy==1.5.0
 pytest==9.0.3
 requests==2.33.0
-urllib3==2.6.3
+urllib3==2.7.0
