@@ -13,8 +13,8 @@ import (
 	"golang-rest-api-template/pkg/models"
 
 	"github.com/go-redis/redis/v8"
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 )
 
 type fakeBookStore struct {
