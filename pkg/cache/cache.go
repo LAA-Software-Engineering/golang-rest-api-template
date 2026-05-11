@@ -1,6 +1,6 @@
 package cache
 
-//go:generate mockgen -source=cache.go -destination=cache_mock.go -package=cache
+//go:generate go run -mod=mod go.uber.org/mock/mockgen@v0.6.0 -destination=cache_mock.go -package=cache golang-rest-api-template/pkg/cache Cache
 
 import (
 	"context"
