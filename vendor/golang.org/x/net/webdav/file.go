@@ -58,6 +58,9 @@ type File interface {
 // A Dir implements FileSystem using the native file system restricted to a
 // specific directory tree.
 //
+// Dir does not prevent traversal of symbolic links within its directory tree,
+// including links that reference locations outside of the tree.
+//
 // While the FileSystem.OpenFile method takes '/'-separated paths, a Dir's
 // string value is a filename on the native file system, not a URL, so it is
 // separated by filepath.Separator, which isn't necessarily '/'.
