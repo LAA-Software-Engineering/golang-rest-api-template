@@ -3,6 +3,24 @@
 // license that can be found in the LICENSE file.
 
 // Package webdav provides a WebDAV server implementation.
+//
+// # Security Considerations
+//
+// This package is not hardened against malicious clients.
+//
+// The following misbehaviors are considered vulnerabilities
+// and should be reported per the [Go Security Policy] if
+// present:
+//
+//   - Remote code execution.
+//   - Access of a file outside of the restricted tree
+//     defined by [Dir].
+//
+// Other misbahaviors (crashes, excessive resource consumption,
+// lack of isolation between clients, etc.) will be handled
+// as ordinary bugs, not vulnerabilities.
+//
+// [Go Security Policy]: https://go.dev/security/policy
 package webdav // import "golang.org/x/net/webdav"
 
 import (
