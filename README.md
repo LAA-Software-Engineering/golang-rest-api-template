@@ -12,6 +12,7 @@ This repository provides a template for building a RESTful API using Go with fea
 - RESTful API endpoints for CRUD operations.
 - JWT Authentication.
 - Rate Limiting (per-client fixed window via Redis; see `RATE_LIMIT_*`).
+- Prometheus metrics on `/metrics` (see `METRICS_*`).
 - Swagger Documentation.
 - PostgreSQL database integration using GORM.
 - Redis cache (book list invalidation bumps a generation counter; no Redis KEYS on the keyspace).
@@ -78,9 +79,14 @@ golang-rest-api-template/
 │  │  ├── logger.go
 │  │  ├── max_body.go
 │  │  ├── max_body_test.go
+│  │  ├── metrics.go
+│  │  ├── metrics_test.go
 │  │  ├── rate_limit.go
+│  │  ├── rate_limit_test.go
 │  │  ├── request_id.go
 │  │  ├── request_id_test.go
+│  │  ├── request_timeout.go
+│  │  ├── request_timeout_test.go
 │  │  ├── security.go
 │  │  └── xss.go
 │  └── models
@@ -170,6 +176,8 @@ Names below match `os.Getenv` usage in this repository:
 | `RATE_LIMIT_REQUESTS` | Max requests per client per window (default `60`). |
 | `RATE_LIMIT_WINDOW` | Fixed window duration (Go duration, default `1m`). |
 | `RATE_LIMIT_BACKEND` | Counter store: `redis` (default, shared across instances) or `memory` (single process only). |
+| `METRICS_ENABLED` | Prometheus metrics on/off (`true`/`false`; default on). Set `0`/`off`/`none` to disable (`pkg/middleware/metrics.go`). |
+| `METRICS_PATH` | Scrape path for Prometheus (default `/metrics`). Must start with `/`. |
 
 To generate URL-safe random values for `JWT_SECRET_KEY` and `API_SECRET_KEY`, run:
 
@@ -193,6 +201,7 @@ http://localhost:8001/swagger/index.html
 
 - `GET /livez`: Liveness probe (process up; no dependency checks; no `X-API-Key`).
 - `GET /readyz`: Readiness probe (checks Postgres, Redis, Mongo; **503** if a dependency fails; no `X-API-Key`). Docker image `HEALTHCHECK` uses **`/livez`** so the container stays alive while dependencies recover.
+- `GET /metrics`: Prometheus scrape endpoint (HTTP request metrics plus Go/process collectors; no `X-API-Key`; outside rate limiting). Disable with `METRICS_ENABLED=off`.
 - `GET /api/v1/`: Health check (no `X-API-Key`; lightweight app-level ping).
 - `GET /api/v1/books`: Get all books.
 - `GET /api/v1/books/:id`: Get a single book by ID.

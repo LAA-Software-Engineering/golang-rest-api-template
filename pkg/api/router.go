@@ -30,6 +30,11 @@ func NewRouter(logger *zap.Logger, mongoCollection *mongo.Collection, db *gorm.D
 	}
 	registerProbeRoutes(r, db, redisClient, mongoCollection)
 
+	// Prometheus scrape endpoint (before Use middleware so scrapers skip rate limits).
+	metrics := middleware.MetricsFromEnv()
+	metrics.Mount(r)
+
+	r.Use(metrics.Middleware())
 	r.Use(middleware.MaxRequestBody(maxRequestBodyBytesFromEnv()))
 	r.Use(middleware.RequestID())
 
