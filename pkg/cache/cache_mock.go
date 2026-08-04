@@ -61,6 +61,25 @@ func (mr *MockCacheMockRecorder) Del(arg0 any, arg1 ...any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Del", reflect.TypeOf((*MockCache)(nil).Del), varargs...)
 }
 
+// Eval mocks base method.
+func (m *MockCache) Eval(ctx context.Context, script string, keys []string, args ...any) *redis.Cmd {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, script, keys}
+	for _, a := range args {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "Eval", varargs...)
+	ret0, _ := ret[0].(*redis.Cmd)
+	return ret0
+}
+
+// Eval indicates an expected call of Eval.
+func (mr *MockCacheMockRecorder) Eval(ctx, script, keys any, args ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, script, keys}, args...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Eval", reflect.TypeOf((*MockCache)(nil).Eval), varargs...)
+}
+
 // Get mocks base method.
 func (m *MockCache) Get(ctx context.Context, key string) *redis.StringCmd {
 	m.ctrl.T.Helper()

@@ -11,7 +11,7 @@ This repository provides a template for building a RESTful API using Go with fea
 
 - RESTful API endpoints for CRUD operations.
 - JWT Authentication.
-- Rate Limiting.
+- Rate Limiting (per-client fixed window via Redis; see `RATE_LIMIT_*`).
 - Swagger Documentation.
 - PostgreSQL database integration using GORM.
 - Redis cache (book list invalidation bumps a generation counter; no Redis KEYS on the keyspace).
@@ -159,6 +159,10 @@ Names below match `os.Getenv` usage in this repository:
 | `GIN_TRUSTED_PROXIES` | Optional comma-separated CIDRs trusted for `X-Forwarded-For` / `ClientIP` (`pkg/api/router.go`). If unset, only the direct peer address is used. |
 | `REQUEST_MAX_BODY_BYTES` | Optional cap on JSON/body bytes for `POST`/`PUT`/`PATCH` (default `1048576`, i.e. 1 MiB; `pkg/middleware/max_body.go`). |
 | `REQUEST_CONTEXT_TIMEOUT` | Optional per-request deadline for **`/api/v1/**` only** (Go duration, e.g. `60s`); default `60s`. Set to `0`, `off`, or `none` to disable (`pkg/middleware/request_timeout.go`). Probes and Swagger are outside this group. |
+| `RATE_LIMIT_ENABLED` | Per-client rate limiting on/off (`true`/`false`; default on). Set `0`/`off`/`none` to disable (`pkg/middleware/rate_limit.go`). |
+| `RATE_LIMIT_REQUESTS` | Max requests per client per window (default `60`). |
+| `RATE_LIMIT_WINDOW` | Fixed window duration (Go duration, default `1m`). |
+| `RATE_LIMIT_BACKEND` | Counter store: `redis` (default, shared across instances) or `memory` (single process only). |
 
 To generate URL-safe random values for `JWT_SECRET_KEY` and `API_SECRET_KEY`, run:
 
