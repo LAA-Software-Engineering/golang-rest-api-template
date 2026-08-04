@@ -38,6 +38,7 @@ func NewRouter(logger *zap.Logger, mongoCollection *mongo.Collection, db *gorm.D
 	r.Use(metrics.Middleware())
 	r.Use(middleware.MaxRequestBody(maxRequestBodyBytesFromEnv()))
 	r.Use(middleware.RequestID())
+	r.Use(middleware.Tracing())
 
 	//r.Use(gin.Logger())
 	r.Use(middleware.Logger(logger, mongoCollection))

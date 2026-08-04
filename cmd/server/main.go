@@ -8,6 +8,7 @@ import (
 	"golang-rest-api-template/pkg/cache"
 	"golang-rest-api-template/pkg/database"
 	"golang-rest-api-template/pkg/middleware"
+	"golang-rest-api-template/pkg/tracing"
 	"log"
 	"net/http"
 	"os"
@@ -68,6 +69,18 @@ func main() {
 	if err := middleware.SetAPISecretKey([]byte(os.Getenv("API_SECRET_KEY"))); err != nil {
 		log.Fatalf("invalid API_SECRET_KEY: %v", err)
 	}
+
+	tracerProvider, err := tracing.Init(context.Background(), tracing.ConfigFromEnv())
+	if err != nil {
+		log.Fatalf("tracing: %v", err)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := tracerProvider.Shutdown(shutdownCtx); err != nil {
+			log.Printf("tracing shutdown: %v", err)
+		}
+	}()
 
 	redisClient, err := cache.NewRedisClient()
 	if err != nil {

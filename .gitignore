@@ -23,5 +23,6 @@ __pycache__
 .pytest_cache
 .env
 .venv
-env
-venv
+# Anchor to repo root so vendored packages named "env" (e.g. otel) are not ignored.
+/env
+/venv

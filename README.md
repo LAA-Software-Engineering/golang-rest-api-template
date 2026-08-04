@@ -18,6 +18,7 @@ This repository provides a template for building a RESTful API using Go with fea
 - PostgreSQL database integration using GORM.
 - Redis cache (book list invalidation bumps a generation counter; no Redis KEYS on the keyspace).
 - MongoDB for logging storage.
+- Optional OpenTelemetry tracing (OTLP), correlated with `X-Request-Id`.
 - Dockerized application for easy setup and deployment.
 
 ## Folder structure
@@ -94,11 +95,19 @@ golang-rest-api-template/
 │  │  ├── request_timeout.go
 │  │  ├── request_timeout_test.go
 │  │  ├── security.go
+│  │  ├── tracing.go
+│  │  ├── tracing_test.go
 │  │  └── xss.go
-│  └── models
-│     ├── book.go
-│     ├── user.go
-│     └── user_test.go
+│  ├── models
+│  │  ├── book.go
+│  │  ├── user.go
+│  │  └── user_test.go
+│  └── tracing
+│     ├── config.go
+│     ├── config_test.go
+│     ├── doc.go
+│     ├── provider.go
+│     └── provider_test.go
 ├── README.md
 ├── scripts
 │  └── generate_key.go
@@ -184,6 +193,12 @@ Names below match `os.Getenv` usage in this repository:
 | `RATE_LIMIT_BACKEND` | Counter store: `redis` (default, shared across instances) or `memory` (single process only). |
 | `METRICS_ENABLED` | Prometheus metrics on/off (`true`/`false`; default on). Set `0`/`off`/`none` to disable (`pkg/middleware/metrics.go`). |
 | `METRICS_PATH` | Scrape path for Prometheus (default `/metrics`). Must start with `/`. |
+| `OTEL_TRACES_ENABLED` | Opt-in OpenTelemetry tracing (`true` / `1` / `yes` / `on`). Default off (`pkg/tracing`). |
+| `OTEL_SERVICE_NAME` | Resource `service.name` for traces (default `golang-rest-api-template`). |
+| `OTEL_TRACES_EXPORTER` | Trace exporter when enabled: `otlp` (default), `stdout`, or `none`. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP HTTP collector base URL (standard OpenTelemetry env; e.g. `http://localhost:4318`). |
+
+When tracing is enabled, each request gets a server span after `X-Request-Id` is assigned. The request id is recorded on the span as `http.request_id`, and access logs include `trace_id` / `span_id` when a valid span is present.
 
 To generate URL-safe random values for `JWT_SECRET_KEY` and `API_SECRET_KEY`, run:
 
