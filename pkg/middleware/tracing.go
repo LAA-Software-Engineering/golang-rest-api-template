@@ -23,31 +23,32 @@ const (
 //
 // When the global TracerProvider is the SDK no-op (tracing disabled), spans are
 // cheap no-ops and propagation still runs harmlessly.
-func Tracing(serviceName string) gin.HandlerFunc {
-	if serviceName == "" {
-		serviceName = "golang-rest-api-template"
-	}
+func Tracing() gin.HandlerFunc {
 	tracer := otel.Tracer(tracerName)
 	propagator := otel.GetTextMapPropagator()
 
 	return func(c *gin.Context) {
 		ctx := propagator.Extract(c.Request.Context(), propagation.HeaderCarrier(c.Request.Header))
 
-		spanName := c.FullPath()
+		route := c.FullPath()
+		spanName := route
 		if spanName == "" {
-			spanName = fmt.Sprintf("%s %s", c.Request.Method, c.Request.URL.Path)
+			// Keep unmatched span names low-cardinality; raw path stays on url.path.
+			spanName = c.Request.Method + " unmatched"
 		}
 
 		attrs := []attribute.KeyValue{
 			semconv.HTTPRequestMethodKey.String(c.Request.Method),
 			semconv.URLPath(c.Request.URL.Path),
 			semconv.URLScheme(requestScheme(c)),
-			attribute.String("server.address", serviceName),
+		}
+		if host := c.Request.Host; host != "" {
+			attrs = append(attrs, semconv.ServerAddress(host))
 		}
 		if requestID := GetRequestID(c); requestID != "" {
 			attrs = append(attrs, attribute.String(requestIDSpanAttrKey, requestID))
 		}
-		if route := c.FullPath(); route != "" {
+		if route != "" {
 			attrs = append(attrs, semconv.HTTPRoute(route))
 		}
 

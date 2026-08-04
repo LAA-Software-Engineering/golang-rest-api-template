@@ -37,7 +37,7 @@ func TestTracingAttachesRequestIDAttribute(t *testing.T) {
 
 	r := gin.New()
 	r.Use(RequestID())
-	r.Use(Tracing("test-api"))
+	r.Use(Tracing())
 	r.GET("/books/:id", func(c *gin.Context) {
 		sc := trace.SpanFromContext(c.Request.Context()).SpanContext()
 		assert.True(t, sc.IsValid())
@@ -45,6 +45,7 @@ func TestTracingAttachesRequestIDAttribute(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/books/42", nil)
+	req.Host = "api.example.test"
 	req.Header.Set(RequestIDHeader, "req-trace-1")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -60,7 +61,33 @@ func TestTracingAttachesRequestIDAttribute(t *testing.T) {
 	attrs := span.Attributes()
 	assert.True(t, hasAttr(attrs, attribute.String(requestIDSpanAttrKey, "req-trace-1")))
 	assert.True(t, hasAttr(attrs, attribute.String("http.request.method", "GET")))
+	assert.True(t, hasAttr(attrs, attribute.String("server.address", "api.example.test")))
+	assert.True(t, hasAttr(attrs, attribute.String("url.path", "/books/42")))
+	assert.True(t, hasAttr(attrs, attribute.String("http.route", "/books/:id")))
 	assert.True(t, hasAttr(attrs, attribute.Int("http.response.status_code", 200)))
+}
+
+func TestTracingUnmatchedRouteUsesLowCardinalityName(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	sr := installTestTracer(t)
+
+	r := gin.New()
+	r.Use(RequestID())
+	r.Use(Tracing())
+	r.NoRoute(func(c *gin.Context) {
+		c.Status(http.StatusNotFound)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/books/42", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	spans := sr.Ended()
+	require.Len(t, spans, 1)
+	assert.Equal(t, "GET unmatched", spans[0].Name())
+	attrs := spans[0].Attributes()
+	assert.True(t, hasAttr(attrs, attribute.String("url.path", "/api/v1/books/42")))
+	assert.False(t, hasAttrKey(attrs, "http.route"))
 }
 
 func TestTracingMarksServerErrors(t *testing.T) {
@@ -69,7 +96,7 @@ func TestTracingMarksServerErrors(t *testing.T) {
 
 	r := gin.New()
 	r.Use(RequestID())
-	r.Use(Tracing("test-api"))
+	r.Use(Tracing())
 	r.GET("/boom", func(c *gin.Context) {
 		c.Status(http.StatusInternalServerError)
 	})
@@ -91,7 +118,7 @@ func TestTracingNoopProviderStillServes(t *testing.T) {
 
 	r := gin.New()
 	r.Use(RequestID())
-	r.Use(Tracing("test-api"))
+	r.Use(Tracing())
 	r.GET("/ok", func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
@@ -106,6 +133,15 @@ func TestTracingNoopProviderStillServes(t *testing.T) {
 func hasAttr(attrs []attribute.KeyValue, want attribute.KeyValue) bool {
 	for _, a := range attrs {
 		if a.Key == want.Key && a.Value.Type() == want.Value.Type() && a.Value.String() == want.Value.String() {
+			return true
+		}
+	}
+	return false
+}
+
+func hasAttrKey(attrs []attribute.KeyValue, key attribute.Key) bool {
+	for _, a := range attrs {
+		if a.Key == key {
 			return true
 		}
 	}
