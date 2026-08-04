@@ -22,7 +22,8 @@ type Cache interface {
 	Get(ctx context.Context, key string) *redis.StringCmd
 	Set(ctx context.Context, key string, value interface{}, expiration time.Duration) *redis.StatusCmd
 	Incr(ctx context.Context, key string) *redis.IntCmd
-	Expire(ctx context.Context, key string, expiration time.Duration) *redis.BoolCmd
+	// Eval runs a Lua script against Redis (used for atomic multi-command updates).
+	Eval(ctx context.Context, script string, keys []string, args ...interface{}) *redis.Cmd
 	Del(context.Context, ...string) *redis.IntCmd
 }
 

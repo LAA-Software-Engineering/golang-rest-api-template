@@ -61,18 +61,23 @@ func (mr *MockCacheMockRecorder) Del(arg0 any, arg1 ...any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Del", reflect.TypeOf((*MockCache)(nil).Del), varargs...)
 }
 
-// Expire mocks base method.
-func (m *MockCache) Expire(ctx context.Context, key string, expiration time.Duration) *redis.BoolCmd {
+// Eval mocks base method.
+func (m *MockCache) Eval(ctx context.Context, script string, keys []string, args ...any) *redis.Cmd {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Expire", ctx, key, expiration)
-	ret0, _ := ret[0].(*redis.BoolCmd)
+	varargs := []any{ctx, script, keys}
+	for _, a := range args {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "Eval", varargs...)
+	ret0, _ := ret[0].(*redis.Cmd)
 	return ret0
 }
 
-// Expire indicates an expected call of Expire.
-func (mr *MockCacheMockRecorder) Expire(ctx, key, expiration any) *gomock.Call {
+// Eval indicates an expected call of Eval.
+func (mr *MockCacheMockRecorder) Eval(ctx, script, keys any, args ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Expire", reflect.TypeOf((*MockCache)(nil).Expire), ctx, key, expiration)
+	varargs := append([]any{ctx, script, keys}, args...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Eval", reflect.TypeOf((*MockCache)(nil).Eval), varargs...)
 }
 
 // Get mocks base method.

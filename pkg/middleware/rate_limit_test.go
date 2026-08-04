@@ -133,6 +133,44 @@ func TestMemoryRateLimitStore_windowReset(t *testing.T) {
 	}
 }
 
+func TestMemoryRateLimitStore_prunesExpiredKeys(t *testing.T) {
+	store := NewMemoryRateLimitStore().(*memoryRateLimitStore)
+	ctx := context.Background()
+	window := 15 * time.Millisecond
+
+	if _, _, err := store.Allow(ctx, "stale-a", 1, window); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.Allow(ctx, "stale-b", 1, window); err != nil {
+		t.Fatal(err)
+	}
+	store.mu.Lock()
+	if got := len(store.windows); got != 2 {
+		store.mu.Unlock()
+		t.Fatalf("pre-prune size=%d want 2", got)
+	}
+	store.mu.Unlock()
+
+	time.Sleep(window + 5*time.Millisecond)
+
+	// Touch a different key; Allow should prune expired entries first.
+	if _, _, err := store.Allow(ctx, "fresh", 5, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if _, ok := store.windows["stale-a"]; ok {
+		t.Fatal("stale-a should have been pruned")
+	}
+	if _, ok := store.windows["stale-b"]; ok {
+		t.Fatal("stale-b should have been pruned")
+	}
+	if _, ok := store.windows["fresh"]; !ok {
+		t.Fatal("fresh should remain")
+	}
+}
+
 func TestMemoryRateLimitStore_canceledContext(t *testing.T) {
 	store := NewMemoryRateLimitStore()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -176,70 +214,45 @@ func TestRedisRateLimitStore_allowAndDeny(t *testing.T) {
 	ctx := context.Background()
 	key := rateLimitKeyPrefix + "9.9.9.9"
 	window := time.Minute
+	ms := window.Milliseconds()
 
-	incr1 := redis.NewIntCmd(ctx)
-	incr1.SetVal(1)
-	mock.EXPECT().Incr(ctx, key).Return(incr1)
-	exp := redis.NewBoolCmd(ctx)
-	exp.SetVal(true)
-	mock.EXPECT().Expire(ctx, key, window).Return(exp)
+	cmd1 := redis.NewCmd(ctx)
+	cmd1.SetVal(int64(1))
+	mock.EXPECT().Eval(ctx, rateLimitIncrExpireScript, []string{key}, ms).Return(cmd1)
 
 	allowed, remaining, err := store.Allow(ctx, "9.9.9.9", 2, window)
 	if err != nil || !allowed || remaining != 1 {
 		t.Fatalf("first: allowed=%v remaining=%d err=%v", allowed, remaining, err)
 	}
 
-	incr2 := redis.NewIntCmd(ctx)
-	incr2.SetVal(2)
-	mock.EXPECT().Incr(ctx, key).Return(incr2)
+	cmd2 := redis.NewCmd(ctx)
+	cmd2.SetVal(int64(2))
+	mock.EXPECT().Eval(ctx, rateLimitIncrExpireScript, []string{key}, ms).Return(cmd2)
 	allowed, remaining, err = store.Allow(ctx, "9.9.9.9", 2, window)
 	if err != nil || !allowed || remaining != 0 {
 		t.Fatalf("second: allowed=%v remaining=%d err=%v", allowed, remaining, err)
 	}
 
-	incr3 := redis.NewIntCmd(ctx)
-	incr3.SetVal(3)
-	mock.EXPECT().Incr(ctx, key).Return(incr3)
+	cmd3 := redis.NewCmd(ctx)
+	cmd3.SetVal(int64(3))
+	mock.EXPECT().Eval(ctx, rateLimitIncrExpireScript, []string{key}, ms).Return(cmd3)
 	allowed, remaining, err = store.Allow(ctx, "9.9.9.9", 2, window)
 	if err != nil || allowed || remaining != 0 {
 		t.Fatalf("third: allowed=%v remaining=%d err=%v", allowed, remaining, err)
 	}
 }
 
-func TestRedisRateLimitStore_incrError(t *testing.T) {
+func TestRedisRateLimitStore_evalError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mock := cache.NewMockCache(ctrl)
 	store := NewRedisRateLimitStore(mock)
 	ctx := context.Background()
 	key := rateLimitKeyPrefix + "ip"
+	window := time.Minute
 
-	cmd := redis.NewIntCmd(ctx)
+	cmd := redis.NewCmd(ctx)
 	cmd.SetErr(errors.New("redis down"))
-	mock.EXPECT().Incr(ctx, key).Return(cmd)
-
-	allowed, _, err := store.Allow(ctx, "ip", 5, time.Minute)
-	if allowed || err == nil {
-		t.Fatalf("want error, got allowed=%v err=%v", allowed, err)
-	}
-}
-
-func TestRedisRateLimitStore_expireErrorCleansKey(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mock := cache.NewMockCache(ctrl)
-	store := NewRedisRateLimitStore(mock)
-	ctx := context.Background()
-	key := rateLimitKeyPrefix + "ip"
-	window := time.Second
-
-	incr := redis.NewIntCmd(ctx)
-	incr.SetVal(1)
-	mock.EXPECT().Incr(ctx, key).Return(incr)
-	exp := redis.NewBoolCmd(ctx)
-	exp.SetErr(errors.New("expire failed"))
-	mock.EXPECT().Expire(ctx, key, window).Return(exp)
-	del := redis.NewIntCmd(ctx)
-	del.SetVal(1)
-	mock.EXPECT().Del(ctx, key).Return(del)
+	mock.EXPECT().Eval(ctx, rateLimitIncrExpireScript, []string{key}, window.Milliseconds()).Return(cmd)
 
 	allowed, _, err := store.Allow(ctx, "ip", 5, window)
 	if allowed || err == nil {

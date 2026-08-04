@@ -26,6 +26,15 @@ const (
 	rateLimitKeyPrefix     = "v1:ratelimit:"
 	rateLimitBackendRedis  = "redis"
 	rateLimitBackendMemory = "memory"
+
+	// Atomic INCR + PEXPIRE on first hit so a crash cannot leave a key without TTL.
+	rateLimitIncrExpireScript = `
+local n = redis.call("INCR", KEYS[1])
+if n == 1 then
+  redis.call("PEXPIRE", KEYS[1], ARGV[1])
+end
+return n
+`
 )
 
 // RateLimitConfig configures per-client fixed-window rate limiting.
@@ -107,7 +116,7 @@ func RateLimitConfigFromEnv() RateLimitConfig {
 
 // RateLimiterFromEnv returns Gin middleware for distributed per-client rate
 // limiting using RateLimitConfigFromEnv. When the backend is redis, redisClient
-// must implement cache.Cache (including Expire). A nil client falls back to the
+// must implement cache.Cache (including Eval). A nil client falls back to the
 // in-memory store with a warning.
 func RateLimiterFromEnv(redisClient cache.Cache) gin.HandlerFunc {
 	cfg := RateLimitConfigFromEnv()
@@ -187,21 +196,20 @@ type redisRateLimitStore struct {
 	cache cache.Cache
 }
 
-// Allow implements RateLimitStore using INCR + EXPIRE on the first hit in a window.
+// Allow implements RateLimitStore using a Lua script that atomically INCRs and
+// sets PEXPIRE on the first hit in a window (avoids orphan keys without TTL).
 func (s *redisRateLimitStore) Allow(ctx context.Context, clientKey string, limit int, window time.Duration) (bool, int, error) {
 	if s == nil || s.cache == nil {
 		return false, 0, fmt.Errorf("redis rate limit store: nil cache")
 	}
 	key := rateLimitKeyPrefix + clientKey
-	n, err := s.cache.Incr(ctx, key).Result()
-	if err != nil {
-		return false, 0, fmt.Errorf("rate limit incr %s: %w", key, err)
+	ms := window.Milliseconds()
+	if ms < 1 {
+		ms = 1
 	}
-	if n == 1 {
-		if err := s.cache.Expire(ctx, key, window).Err(); err != nil {
-			_ = s.cache.Del(ctx, key).Err()
-			return false, 0, fmt.Errorf("rate limit expire %s: %w", key, err)
-		}
+	n, err := s.cache.Eval(ctx, rateLimitIncrExpireScript, []string{key}, ms).Int64()
+	if err != nil {
+		return false, 0, fmt.Errorf("rate limit incr/expire %s: %w", key, err)
 	}
 	if n > int64(limit) {
 		return false, 0, nil
@@ -211,7 +219,8 @@ func (s *redisRateLimitStore) Allow(ctx context.Context, clientKey string, limit
 
 // NewMemoryRateLimitStore returns a process-local fixed-window RateLimitStore.
 // It is suitable for tests and single-instance deployments; it is not shared
-// across replicas.
+// across replicas. Expired windows are pruned on Allow to bound memory under
+// ClientIP churn.
 func NewMemoryRateLimitStore() RateLimitStore {
 	return &memoryRateLimitStore{
 		windows: make(map[string]memoryWindow),
@@ -238,6 +247,8 @@ func (s *memoryRateLimitStore) Allow(ctx context.Context, clientKey string, limi
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	s.pruneExpiredLocked(now)
+
 	w, ok := s.windows[clientKey]
 	if !ok || !now.Before(w.reset) {
 		w = memoryWindow{count: 0, reset: now.Add(window)}
@@ -249,4 +260,13 @@ func (s *memoryRateLimitStore) Allow(ctx context.Context, clientKey string, limi
 		return false, 0, nil
 	}
 	return true, limit - w.count, nil
+}
+
+// pruneExpiredLocked removes windows whose reset time has passed. Caller must hold s.mu.
+func (s *memoryRateLimitStore) pruneExpiredLocked(now time.Time) {
+	for key, w := range s.windows {
+		if !now.Before(w.reset) {
+			delete(s.windows, key)
+		}
+	}
 }
