@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"golang-rest-api-template/pkg/auth"
 	"golang-rest-api-template/pkg/cache"
 	"golang-rest-api-template/pkg/middleware"
 	"golang-rest-api-template/pkg/repository"
@@ -57,6 +58,11 @@ func NewRouter(logger *zap.Logger, mongoCollection *mongo.Collection, db *gorm.D
 
 		v1.POST("/login", middleware.APIKeyAuth(), users.LoginHandler)
 		v1.POST("/register", middleware.APIKeyAuth(), users.RegisterHandler)
+
+		admin := v1.Group("/admin", middleware.APIKeyAuth(), middleware.JWTAuth(), middleware.RequireRole(auth.RoleAdmin))
+		{
+			admin.GET("/me", users.AdminMeHandler)
+		}
 	}
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerfiles.Handler))
 

@@ -6,6 +6,7 @@ import (
 
 	"golang-rest-api-template/pkg/httperr"
 	"golang-rest-api-template/pkg/httpresp"
+	"golang-rest-api-template/pkg/middleware"
 	"golang-rest-api-template/pkg/models"
 	"golang-rest-api-template/pkg/repository"
 	"golang-rest-api-template/pkg/service"
@@ -17,6 +18,7 @@ import (
 type UserHandler interface {
 	LoginHandler(c *gin.Context)
 	RegisterHandler(c *gin.Context)
+	AdminMeHandler(c *gin.Context)
 }
 
 type userHandler struct {
@@ -97,4 +99,30 @@ func (h *userHandler) RegisterHandler(c *gin.Context) {
 		return
 	}
 	httpresp.Created(c, models.RegisterSuccessBody{Message: "Registration successful"})
+}
+
+// AdminMeHandler godoc
+// @Summary Current admin identity
+// @Schemes
+// @Description Returns the authenticated admin's username, user id, and role from JWT claims. Example admin-only route for RBAC.
+// @Tags admin
+// @Security ApiKeyAuth
+// @Security JwtAuth
+// @Produce json
+// @Success 200 {object} models.AdminMeAPIResponse "Admin identity in standard envelope"
+// @Failure 401 {string} string "Unauthorized"
+// @Failure 403 {string} string "Forbidden"
+// @Router /admin/me [get]
+func (h *userHandler) AdminMeHandler(c *gin.Context) {
+	username, _ := c.Get("username")
+	userID, _ := c.Get(middleware.ContextUserID)
+	role, _ := c.Get(middleware.ContextRole)
+	uid, _ := userID.(uint)
+	uname, _ := username.(string)
+	r, _ := role.(string)
+	httpresp.OK(c, models.AdminMeBody{
+		Username: uname,
+		UserID:   uid,
+		Role:     r,
+	})
 }

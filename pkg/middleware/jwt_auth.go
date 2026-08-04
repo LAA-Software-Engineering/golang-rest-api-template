@@ -14,6 +14,10 @@ import (
 // (users.id), set by JWTAuth after successful verification.
 const ContextUserID = "user_id"
 
+// ContextRole is the Gin context key for the authenticated user's role claim,
+// set by JWTAuth after successful verification.
+const ContextRole = "role"
+
 // JWTAuth returns Gin middleware that requires a valid Bearer JWT signed
 // with HMAC-SHA256 using the application's JWT secret. Other algorithms are
 // rejected before signature verification.
@@ -57,8 +61,14 @@ func JWTAuth() gin.HandlerFunc {
 			return
 		}
 
+		if !auth.ValidRole(claims.Role) {
+			httperr.Abort(c, http.StatusUnauthorized, "Invalid token")
+			return
+		}
+
 		c.Set("username", claims.Username)
 		c.Set(ContextUserID, claims.UserID)
+		c.Set(ContextRole, claims.Role)
 		c.Next()
 	}
 }

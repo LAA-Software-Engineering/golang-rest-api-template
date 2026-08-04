@@ -41,6 +41,46 @@
                 }
             }
         },
+        "/admin/me": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "JwtAuth": []
+                    }
+                ],
+                "description": "Returns the authenticated admin's username, user id, and role from JWT claims. Example admin-only route for RBAC.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Current admin identity",
+                "responses": {
+                    "200": {
+                        "description": "Admin identity in standard envelope",
+                        "schema": {
+                            "$ref": "#/definitions/models.AdminMeAPIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/books": {
             "get": {
                 "security": [
@@ -521,6 +561,28 @@
         }
     },
     "definitions": {
+        "models.AdminMeAPIResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/models.AdminMeBody"
+                }
+            }
+        },
+        "models.AdminMeBody": {
+            "type": "object",
+            "properties": {
+                "role": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "integer"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
         "models.Book": {
             "type": "object",
             "properties": {

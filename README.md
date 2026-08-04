@@ -11,6 +11,7 @@ This repository provides a template for building a RESTful API using Go with fea
 
 - RESTful API endpoints for CRUD operations.
 - JWT Authentication.
+- Role-based access control (RBAC) via JWT `role` claims (`user` / `admin`).
 - Rate Limiting (per-client fixed window via Redis; see `RATE_LIMIT_*`).
 - Swagger Documentation.
 - PostgreSQL database integration using GORM.
@@ -48,6 +49,7 @@ golang-rest-api-template/
 │  │  ├── books.go
 │  │  ├── books_test.go
 │  │  ├── book_routes_auth_test.go
+│  │  ├── admin_routes_test.go
 │  │  ├── main_test.go
 │  │  ├── probes.go
 │  │  ├── probes_test.go
@@ -57,7 +59,9 @@ golang-rest-api-template/
 │  │  └── user_test.go
 │  ├── auth
 │  │  ├── auth.go
-│  │  └── auth_test.go
+│  │  ├── auth_test.go
+│  │  ├── roles.go
+│  │  └── roles_test.go
 │  ├── cache
 │  │  ├── cache.go
 │  │  ├── cache_mock.go
@@ -74,6 +78,8 @@ golang-rest-api-template/
 │  │  ├── api_key_test.go
 │  │  ├── jwt_auth.go
 │  │  ├── jwt_auth_test.go
+│  │  ├── rbac.go
+│  │  ├── rbac_test.go
 │  │  ├── cors.go
 │  │  ├── logger.go
 │  │  ├── max_body.go
@@ -202,6 +208,7 @@ http://localhost:8001/swagger/index.html
 - `DELETE /api/v1/books/:id`: Delete a book.
 - `POST /api/v1/login`: Login.
 - `POST /api/v1/register`: Register a new user.
+- `GET /api/v1/admin/me`: Admin-only identity probe (API key + JWT with `role=admin`).
 - `GET /swagger/*`: Swagger UI (no `X-API-Key`).
 
 ### JSON responses
@@ -216,6 +223,8 @@ Under **`/api/v1`**, every route **except** `GET /api/v1/` (health) requires the
 
 Book **mutations** (`POST`, `PUT`, `PATCH`, and `DELETE` on `/api/v1/books` and `/api/v1/books/:id`) also require a valid user JWT in `Authorization: Bearer <token>` (obtain a token from `POST /api/v1/login`; the JWT string is at **`data.token`** in the JSON body). Book **reads** (`GET` list and `GET` by id) require the API key only.
 
+JWTs include a **`role`** claim (`user` or `admin`). New registrations get `user`. Protect admin routes with `middleware.RequireRole(auth.RoleAdmin)` after `JWTAuth` (see `GET /api/v1/admin/me`). Promote a user by setting `users.role` to `admin` in the database, then logging in again so the new role is embedded in the token.
+
 ```bash
 curl -H "X-API-Key: <YOUR_API_KEY>" http://localhost:8001/api/v1/books
 ```
@@ -229,6 +238,11 @@ curl -X POST \
   http://localhost:8001/api/v1/books
 ```
 
+```bash
+curl -H "X-API-Key: <YOUR_API_KEY>" \
+  -H "Authorization: Bearer <ADMIN_JWT>" \
+  http://localhost:8001/api/v1/admin/me
+```
 ## Contributing
 
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.

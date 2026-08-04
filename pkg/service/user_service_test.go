@@ -11,6 +11,7 @@ import (
 	"golang-rest-api-template/pkg/models"
 	"golang-rest-api-template/pkg/repository"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -81,13 +82,74 @@ func TestUserServiceLoginSuccess(t *testing.T) {
 	assert.NoError(t, err)
 	store := &fakeUserStore{
 		findFn: func(username string) (*models.User, error) {
-			return &models.User{ID: 100, Username: "alice", Password: string(hash)}, nil
+			return &models.User{ID: 100, Username: "alice", Password: string(hash), Role: auth.RoleUser}, nil
 		},
 	}
 	svc := NewUserService(store)
 	tok, err := svc.Login(context.Background(), "alice", "secret")
 	assert.NoError(t, err)
 	assert.NotEmpty(t, tok)
+}
+
+func TestUserServiceLoginEmbedsAdminRole(t *testing.T) {
+	prev := auth.JWTSigningKey()
+	t.Cleanup(func() { _ = auth.SetJWTSigningKey(prev) })
+	assert.NoError(t, auth.SetJWTSigningKey(bytes.Repeat([]byte("s"), auth.MinJWTSecretKeyBytes)))
+
+	hash, err := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.MinCost)
+	assert.NoError(t, err)
+	store := &fakeUserStore{
+		findFn: func(username string) (*models.User, error) {
+			return &models.User{ID: 3, Username: "boss", Password: string(hash), Role: auth.RoleAdmin}, nil
+		},
+	}
+	svc := NewUserService(store)
+	tok, err := svc.Login(context.Background(), "boss", "secret")
+	assert.NoError(t, err)
+
+	parsed := &auth.Claims{}
+	token, err := jwt.ParseWithClaims(tok, parsed, auth.JWTKeyFunc(auth.JWTSigningKey()))
+	assert.NoError(t, err)
+	assert.True(t, token.Valid)
+	assert.Equal(t, auth.RoleAdmin, parsed.Role)
+}
+
+func TestUserServiceLoginEmptyRoleDefaultsToUser(t *testing.T) {
+	prev := auth.JWTSigningKey()
+	t.Cleanup(func() { _ = auth.SetJWTSigningKey(prev) })
+	assert.NoError(t, auth.SetJWTSigningKey(bytes.Repeat([]byte("s"), auth.MinJWTSecretKeyBytes)))
+
+	hash, err := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.MinCost)
+	assert.NoError(t, err)
+	store := &fakeUserStore{
+		findFn: func(username string) (*models.User, error) {
+			return &models.User{ID: 4, Username: "legacy", Password: string(hash), Role: ""}, nil
+		},
+	}
+	svc := NewUserService(store)
+	tok, err := svc.Login(context.Background(), "legacy", "secret")
+	assert.NoError(t, err)
+
+	parsed := &auth.Claims{}
+	_, err = jwt.ParseWithClaims(tok, parsed, auth.JWTKeyFunc(auth.JWTSigningKey()))
+	assert.NoError(t, err)
+	assert.Equal(t, auth.RoleUser, parsed.Role)
+}
+
+func TestUserServiceRegisterSetsUserRole(t *testing.T) {
+	var created *models.User
+	store := &fakeUserStore{
+		createFn: func(user *models.User) error {
+			created = user
+			return nil
+		},
+	}
+	svc := NewUserService(store)
+	err := svc.Register(context.Background(), "newbie", "password123")
+	assert.NoError(t, err)
+	if assert.NotNil(t, created) {
+		assert.Equal(t, auth.RoleUser, created.Role)
+	}
 }
 
 func TestUserServiceRegisterConflictDuplicatedKey(t *testing.T) {

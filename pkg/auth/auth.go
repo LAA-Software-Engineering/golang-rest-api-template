@@ -46,6 +46,8 @@ type Claims struct {
 	Username string `json:"username"`
 	// UserID is the authenticated users.id used for authorization (must be non-zero).
 	UserID uint `json:"user_id"`
+	// Role is the application role (e.g. RoleUser, RoleAdmin) used for RBAC.
+	Role string `json:"role"`
 	jwt.RegisteredClaims
 }
 
@@ -130,11 +132,15 @@ func bcryptCostForPasswordHashing() int {
 	return c
 }
 
-// GenerateToken issues an HS256 JWT with username and user_id claims. userID must
-// be non-zero (database primary key of the authenticated user).
-func GenerateToken(username string, userID uint) (string, error) {
+// GenerateToken issues an HS256 JWT with username, user_id, and role claims.
+// userID must be non-zero (database primary key of the authenticated user).
+// role must be a known application role (see ValidRole).
+func GenerateToken(username string, userID uint, role string) (string, error) {
 	if userID == 0 {
 		return "", fmt.Errorf("auth.GenerateToken: user id must be non-zero")
+	}
+	if !ValidRole(role) {
+		return "", fmt.Errorf("auth.GenerateToken: invalid role %q", role)
 	}
 	signingMu.RLock()
 	key := jwtSigningKey
@@ -147,6 +153,7 @@ func GenerateToken(username string, userID uint) (string, error) {
 	claims := &Claims{
 		Username: username,
 		UserID:   userID,
+		Role:     role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(exp),
 		},

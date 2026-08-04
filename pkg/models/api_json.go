@@ -14,3 +14,8 @@ type LoginAPIResponse struct {
 type RegisterAPIResponse struct {
 	Data RegisterSuccessBody `json:"data"`
 }
+
+// AdminMeAPIResponse documents GET /admin/me 200 JSON.
+type AdminMeAPIResponse struct {
+	Data AdminMeBody `json:"data"`
+}

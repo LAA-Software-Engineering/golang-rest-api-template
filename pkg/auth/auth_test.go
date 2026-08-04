@@ -80,7 +80,7 @@ func TestHashPasswordInvalidBcryptCostEnvFallsBackToDefault(t *testing.T) {
 
 func TestGenerateToken(t *testing.T) {
 	user := "chud"
-	token, err := GenerateToken(user, 1)
+	token, err := GenerateToken(user, 1, RoleUser)
 	assert.Nil(t, err)
 	assert.NotEmpty(t, token)
 }
@@ -88,7 +88,7 @@ func TestGenerateToken(t *testing.T) {
 func TestGenerateTokenRoundTripUsernameClaim(t *testing.T) {
 	const wantUser = "alice"
 	const wantID uint = 42
-	tokenStr, err := GenerateToken(wantUser, wantID)
+	tokenStr, err := GenerateToken(wantUser, wantID, RoleUser)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -103,6 +103,28 @@ func TestGenerateTokenRoundTripUsernameClaim(t *testing.T) {
 	}
 	assert.Equal(t, wantUser, parsed.Username)
 	assert.Equal(t, wantID, parsed.UserID)
+	assert.Equal(t, RoleUser, parsed.Role)
+}
+
+func TestGenerateTokenRoundTripAdminRole(t *testing.T) {
+	tokenStr, err := GenerateToken("admin-user", 7, RoleAdmin)
+	if !assert.NoError(t, err) {
+		return
+	}
+	parsed := &Claims{}
+	token, err := jwt.ParseWithClaims(tokenStr, parsed, JWTKeyFunc(JWTSigningKey()))
+	if !assert.NoError(t, err) {
+		return
+	}
+	assert.True(t, token.Valid)
+	assert.Equal(t, RoleAdmin, parsed.Role)
+}
+
+func TestGenerateTokenRejectsInvalidRole(t *testing.T) {
+	_, err := GenerateToken("u", 1, "superuser")
+	assert.Error(t, err)
+	_, err = GenerateToken("u", 1, "")
+	assert.Error(t, err)
 }
 
 func TestGenerateRandomKey(t *testing.T) {
@@ -126,7 +148,7 @@ func TestSetJWTSigningKeyAcceptsMinimumLength(t *testing.T) {
 		return
 	}
 	assert.Equal(t, secret, JWTSigningKey())
-	_, err = GenerateToken("user-after-rotate", 1)
+	_, err = GenerateToken("user-after-rotate", 1, RoleUser)
 	assert.NoError(t, err)
 	// Restore default for other tests in the package.
 	assert.NoError(t, SetJWTSigningKey(bytes.Repeat([]byte("k"), MinJWTSecretKeyBytes)))
@@ -138,13 +160,13 @@ func TestGenerateTokenErrorWhenSigningKeyUnset(t *testing.T) {
 	t.Cleanup(func() {
 		assert.NoError(t, SetJWTSigningKey(prev))
 	})
-	_, err := GenerateToken("any", 1)
+	_, err := GenerateToken("any", 1, RoleUser)
 	assert.Error(t, err)
 	assert.True(t, errors.Is(err, ErrJWTSigningKeyNotConfigured))
 }
 
 func TestGenerateTokenRejectsZeroUserID(t *testing.T) {
-	_, err := GenerateToken("u", 0)
+	_, err := GenerateToken("u", 0, RoleUser)
 	assert.Error(t, err)
 }
 
@@ -154,6 +176,7 @@ func TestJWTKeyFuncRejectsNonHS256Algorithms(t *testing.T) {
 	baseClaims := Claims{
 		Username: "attacker",
 		UserID:   1,
+		Role:     RoleUser,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(exp),
 		},
@@ -189,6 +212,7 @@ func TestJWTKeyFuncAcceptsHS256(t *testing.T) {
 	claims := &Claims{
 		Username: "legit",
 		UserID:   9,
+		Role:     RoleAdmin,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 		},

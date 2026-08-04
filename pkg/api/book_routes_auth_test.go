@@ -37,7 +37,7 @@ func testBookWriteMiddlewareStack(t *testing.T) *gin.Engine {
 func TestBookWriteRoutesRequireAPIKeyAndJWT(t *testing.T) {
 	const apiKey = testAPISecretKey
 
-	token, err := auth.GenerateToken("book-writer", 1)
+	token, err := auth.GenerateToken("book-writer", 1, auth.RoleUser)
 	if err != nil {
 		t.Fatalf("GenerateToken: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestBookWriteRoutesRequireAPIKeyAndJWT(t *testing.T) {
 func TestBookWriteRoutesRejectTamperedJWT(t *testing.T) {
 	const apiKey = testAPISecretKey
 
-	token, err := auth.GenerateToken("u1", 1)
+	token, err := auth.GenerateToken("u1", 1, auth.RoleUser)
 	if err != nil {
 		t.Fatalf("GenerateToken: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestBookWriteRoutesRejectTamperedJWT(t *testing.T) {
 func TestBookWriteRoutesConcurrentAuthorizedRequests(t *testing.T) {
 	const apiKey = testAPISecretKey
 
-	token, err := auth.GenerateToken("concurrent-user", 1)
+	token, err := auth.GenerateToken("concurrent-user", 1, auth.RoleUser)
 	if err != nil {
 		t.Fatalf("GenerateToken: %v", err)
 	}
