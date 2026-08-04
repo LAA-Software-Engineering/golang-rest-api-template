@@ -17,8 +17,8 @@ coverage.html
 # Built helper binary (use `go run ./scripts/generate_key.go`)
 scripts/generate_key
 
-# Dependency directories (remove the comment below to include it)
-# vendor/
+# Go module cache / vendored dependencies (use go mod download instead)
+vendor/
 __pycache__
 .pytest_cache
 .env

@@ -90,10 +90,9 @@ golang-rest-api-template/
 ├── README.md
 ├── scripts
 │  └── generate_key.go
-├── tests
-│  ├── e2e.py
-│  └── requirements.txt
-└── vendor
+└── tests
+   ├── e2e.py
+   └── requirements.txt
 ```
 
 ## Getting Started
@@ -118,9 +117,17 @@ git clone https://github.com/araujo88/golang-rest-api-template
 cd golang-rest-api-template
 ```
 
-3. Copy [`.env.example`](./.env.example) to `.env` and set secrets (at least `JWT_SECRET_KEY` and `API_SECRET_KEY`, each **32 bytes or longer**; use `go run ./scripts/generate_key.go` twice). Docker Compose reads this file for `${JWT_SECRET_KEY}` and `${API_SECRET_KEY}` interpolation.
+3. Download Go module dependencies (no vendored `vendor/` directory is committed; `go.mod` / `go.sum` are the source of truth)
 
-4. Build and run the Docker containers
+```bash
+go mod download
+```
+
+To refresh `go.sum` after changing imports, run `go mod tidy`. Optional local vendoring (`go mod vendor`) is gitignored and not required for builds, tests, or Docker (the image runs `go mod download` in the builder stage).
+
+4. Copy [`.env.example`](./.env.example) to `.env` and set secrets (at least `JWT_SECRET_KEY` and `API_SECRET_KEY`, each **32 bytes or longer**; use `go run ./scripts/generate_key.go` twice). Docker Compose reads this file for `${JWT_SECRET_KEY}` and `${API_SECRET_KEY}` interpolation.
+
+5. Build and run the Docker containers
 
 ```bash
 make up
