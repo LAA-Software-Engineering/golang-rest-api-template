@@ -105,7 +105,7 @@ func TestTracingNoopProviderStillServes(t *testing.T) {
 
 func hasAttr(attrs []attribute.KeyValue, want attribute.KeyValue) bool {
 	for _, a := range attrs {
-		if a.Key == want.Key && a.Value.Type() == want.Value.Type() && a.Value.Emit() == want.Value.Emit() {
+		if a.Key == want.Key && a.Value.Type() == want.Value.Type() && a.Value.String() == want.Value.String() {
 			return true
 		}
 	}
