@@ -1,0 +1,39 @@
+---
+description: Always use the repository PR request template when opening a pull request
+alwaysApply: true
+---
+
+# Pull request template
+
+When opening a pull request (via `gh pr create` or any other method), **ALWAYS** use this repository's PR request template.
+
+## Template location
+
+Read and follow: `.github/pull_request_template.md`
+
+## Required behavior
+
+1. Before creating a PR, read `.github/pull_request_template.md`.
+2. Use that file as the **entire** PR body structure — do not invent a different layout.
+3. Fill in every section from the template:
+   - Summary
+   - Type of change (mark the relevant checkbox with `x`)
+   - How to test
+   - Checklist (mark items that apply / were verified)
+   - Related issues
+4. Pass the filled template as the PR body (e.g. `gh pr create --body` with a HEREDOC).
+5. Do not replace the template with a custom Summary/Test plan-only format unless the user explicitly asks to skip the template.
+
+## Example shape
+
+The PR body must match the template sections, for example:
+
+- **Summary**: what changed and why
+- **Type of change**: one checkbox marked, e.g. `- [x] Build / CI / tooling`
+- **How to test**: include the template's `go test ./... -race` command (and any extra steps)
+- **Checklist**: mark completed items; leave non-applicable items unchecked
+- **Related issues**: link issues or leave `-`
+
+Prefer creating the PR with:
+
+`gh pr create --title "..." --body "$(cat <<'EOF' ...filled template... EOF)"`
