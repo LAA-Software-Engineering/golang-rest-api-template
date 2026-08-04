@@ -9,6 +9,7 @@ import (
 	"golang-rest-api-template/pkg/cache"
 	"golang-rest-api-template/pkg/middleware"
 	"golang-rest-api-template/pkg/repository"
+	"golang-rest-api-template/pkg/tracing"
 
 	docs "golang-rest-api-template/docs"
 
@@ -38,6 +39,7 @@ func NewRouter(logger *zap.Logger, mongoCollection *mongo.Collection, db *gorm.D
 	r.Use(metrics.Middleware())
 	r.Use(middleware.MaxRequestBody(maxRequestBodyBytesFromEnv()))
 	r.Use(middleware.RequestID())
+	r.Use(middleware.Tracing(tracing.ServiceName()))
 
 	//r.Use(gin.Logger())
 	r.Use(middleware.Logger(logger, mongoCollection))
