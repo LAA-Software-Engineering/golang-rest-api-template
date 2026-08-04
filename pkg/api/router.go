@@ -4,7 +4,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"golang-rest-api-template/pkg/cache"
 	"golang-rest-api-template/pkg/middleware"
@@ -18,8 +17,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
-
-	"golang.org/x/time/rate"
 )
 
 // NewRouter builds the Gin engine with middleware, Swagger, and API routes.
@@ -43,7 +40,8 @@ func NewRouter(logger *zap.Logger, mongoCollection *mongo.Collection, db *gorm.D
 		r.Use(middleware.Xss())
 	}
 	r.Use(middleware.Cors())
-	r.Use(middleware.RateLimiter(rate.Every(1*time.Minute), 60)) // 60 requests per minute
+	// Per-client fixed-window limiter (Redis by default; see RATE_LIMIT_* env).
+	r.Use(middleware.RateLimiterFromEnv(redisClient))
 
 	docs.SwaggerInfo.BasePath = "/api/v1"
 	v1 := r.Group("/api/v1")

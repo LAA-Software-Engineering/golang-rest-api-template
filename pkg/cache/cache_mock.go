@@ -61,6 +61,20 @@ func (mr *MockCacheMockRecorder) Del(arg0 any, arg1 ...any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Del", reflect.TypeOf((*MockCache)(nil).Del), varargs...)
 }
 
+// Expire mocks base method.
+func (m *MockCache) Expire(ctx context.Context, key string, expiration time.Duration) *redis.BoolCmd {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Expire", ctx, key, expiration)
+	ret0, _ := ret[0].(*redis.BoolCmd)
+	return ret0
+}
+
+// Expire indicates an expected call of Expire.
+func (mr *MockCacheMockRecorder) Expire(ctx, key, expiration any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Expire", reflect.TypeOf((*MockCache)(nil).Expire), ctx, key, expiration)
+}
+
 // Get mocks base method.
 func (m *MockCache) Get(ctx context.Context, key string) *redis.StringCmd {
 	m.ctrl.T.Helper()
