@@ -145,6 +145,7 @@ paths:
             type: string
       security:
       - ApiKeyAuth: []
+      - JwtAuth: []
       summary: Current admin identity
       tags:
       - admin

@@ -107,6 +107,7 @@ func (h *userHandler) RegisterHandler(c *gin.Context) {
 // @Description Returns the authenticated admin's username, user id, and role from JWT claims. Example admin-only route for RBAC.
 // @Tags admin
 // @Security ApiKeyAuth
+// @Security JwtAuth
 // @Produce json
 // @Success 200 {object} models.AdminMeAPIResponse "Admin identity in standard envelope"
 // @Failure 401 {string} string "Unauthorized"

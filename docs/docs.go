@@ -52,6 +52,9 @@ const docTemplate = `{
                 "security": [
                     {
                         "ApiKeyAuth": []
+                    },
+                    {
+                        "JwtAuth": []
                     }
                 ],
                 "description": "Returns the authenticated admin's username, user id, and role from JWT claims. Example admin-only route for RBAC.",
