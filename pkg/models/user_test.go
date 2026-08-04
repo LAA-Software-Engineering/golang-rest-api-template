@@ -11,6 +11,7 @@ func TestUserJSONOmitsPassword(t *testing.T) {
 		ID:        1,
 		Username:  "alice",
 		Password:  "bcrypt-digest-must-not-leak",
+		Role:      "user",
 		CreatedAt: time.Unix(1000, 0).UTC(),
 		UpdatedAt: time.Unix(2000, 0).UTC(),
 	}
@@ -27,5 +28,8 @@ func TestUserJSONOmitsPassword(t *testing.T) {
 	}
 	if m["username"] != "alice" {
 		t.Fatalf("username: got %v", m["username"])
+	}
+	if m["role"] != "user" {
+		t.Fatalf("role: got %v", m["role"])
 	}
 }

@@ -44,7 +44,11 @@ func (s *UserService) Login(_ context.Context, username, password string) (token
 	if err := bcrypt.CompareHashAndPassword([]byte(dbUser.Password), []byte(password)); err != nil {
 		return "", ErrInvalidLogin
 	}
-	tok, err := auth.GenerateToken(dbUser.Username, dbUser.ID)
+	role, err := auth.EffectiveRole(dbUser.Role)
+	if err != nil {
+		return "", fmtError(ErrTokenGenerate, err)
+	}
+	tok, err := auth.GenerateToken(dbUser.Username, dbUser.ID, role)
 	if err != nil {
 		return "", fmtError(ErrTokenGenerate, err)
 	}
@@ -57,7 +61,7 @@ func (s *UserService) Register(_ context.Context, username, password string) err
 	if err != nil {
 		return fmtError(ErrRegisterHash, err)
 	}
-	newUser := &models.User{Username: username, Password: hashedPassword}
+	newUser := &models.User{Username: username, Password: hashedPassword, Role: auth.RoleUser}
 	if err := s.users.Create(newUser); err != nil {
 		if errors.Is(err, repository.ErrUserUsernameConflict) {
 			return ErrRegisterConflict

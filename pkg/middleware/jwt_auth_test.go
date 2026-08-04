@@ -53,7 +53,7 @@ func TestJWTAuthSigningKeyNotConfiguredReturns503(t *testing.T) {
 }
 
 func TestJWTAuthValidBearer(t *testing.T) {
-	token, err := auth.GenerateToken("middleware-user", 1)
+	token, err := auth.GenerateToken("middleware-user", 1, auth.RoleUser)
 	if err != nil {
 		t.Fatalf("GenerateToken: %v", err)
 	}
@@ -72,6 +72,7 @@ func TestJWTAuthRejectsZeroUserIDClaim(t *testing.T) {
 	claims := &auth.Claims{
 		Username: "legacy",
 		UserID:   0,
+		Role:     auth.RoleUser,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 		},
@@ -93,7 +94,7 @@ func TestJWTAuthRejectsZeroUserIDClaim(t *testing.T) {
 
 func TestJWTAuthSetsUsernameContext(t *testing.T) {
 	const wantUser = "ctx-user"
-	token, err := auth.GenerateToken(wantUser, 99)
+	token, err := auth.GenerateToken(wantUser, 99, auth.RoleUser)
 	if err != nil {
 		t.Fatalf("GenerateToken: %v", err)
 	}
@@ -124,7 +125,7 @@ func TestJWTAuthSetsUsernameContext(t *testing.T) {
 
 func TestJWTAuthSetsUserIDContext(t *testing.T) {
 	const wantID uint = 77
-	token, err := auth.GenerateToken("uid-ctx-user", wantID)
+	token, err := auth.GenerateToken("uid-ctx-user", wantID, auth.RoleUser)
 	if err != nil {
 		t.Fatalf("GenerateToken: %v", err)
 	}
@@ -153,8 +154,63 @@ func TestJWTAuthSetsUserIDContext(t *testing.T) {
 	}
 }
 
+func TestJWTAuthSetsRoleContext(t *testing.T) {
+	token, err := auth.GenerateToken("role-ctx-user", 5, auth.RoleAdmin)
+	if err != nil {
+		t.Fatalf("GenerateToken: %v", err)
+	}
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	var got string
+	r.GET("/p", JWTAuth(), func(c *gin.Context) {
+		v, ok := c.Get(ContextRole)
+		if !ok {
+			t.Error("role not in context")
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		got, _ = v.(string)
+		c.Status(http.StatusOK)
+	})
+	req := httptest.NewRequest(http.MethodGet, "/p", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: %d body=%q", rec.Code, rec.Body.String())
+	}
+	if got != auth.RoleAdmin {
+		t.Fatalf("role: got %q want %q", got, auth.RoleAdmin)
+	}
+}
+
+func TestJWTAuthRejectsMissingRoleClaim(t *testing.T) {
+	key := auth.JWTSigningKey()
+	claims := &auth.Claims{
+		Username: "no-role",
+		UserID:   1,
+		Role:     "",
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		},
+	}
+	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	s, err := tok.SignedString(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := testRouterJWTAuthOnly(t)
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req.Header.Set("Authorization", "Bearer "+s)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
 func TestJWTAuthRejectsBadRequests(t *testing.T) {
-	validHS256, err := auth.GenerateToken("ok-user", 1)
+	validHS256, err := auth.GenerateToken("ok-user", 1, auth.RoleUser)
 	if err != nil {
 		t.Fatalf("GenerateToken: %v", err)
 	}
@@ -163,6 +219,7 @@ func TestJWTAuthRejectsBadRequests(t *testing.T) {
 	claims := &auth.Claims{
 		Username: "other",
 		UserID:   1,
+		Role:     auth.RoleUser,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(exp),
 		},
@@ -181,6 +238,7 @@ func TestJWTAuthRejectsBadRequests(t *testing.T) {
 	expiredClaims := &auth.Claims{
 		Username: "expired-user",
 		UserID:   1,
+		Role:     auth.RoleUser,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-time.Hour)),
 		},
@@ -195,6 +253,7 @@ func TestJWTAuthRejectsBadRequests(t *testing.T) {
 	wrongSigClaims := &auth.Claims{
 		Username: "wrong-sig-user",
 		UserID:   1,
+		Role:     auth.RoleUser,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 		},
@@ -286,7 +345,7 @@ func TestJWTAuthRejectsBadRequests(t *testing.T) {
 }
 
 func TestJWTAuthConcurrentValidRequests(t *testing.T) {
-	token, err := auth.GenerateToken("concurrent-jwt-user", 1)
+	token, err := auth.GenerateToken("concurrent-jwt-user", 1, auth.RoleUser)
 	if err != nil {
 		t.Fatalf("GenerateToken: %v", err)
 	}

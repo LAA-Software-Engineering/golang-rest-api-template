@@ -1,5 +1,19 @@
 basePath: /api/v1
 definitions:
+  models.AdminMeAPIResponse:
+    properties:
+      data:
+        $ref: '#/definitions/models.AdminMeBody'
+    type: object
+  models.AdminMeBody:
+    properties:
+      role:
+        type: string
+      user_id:
+        type: integer
+      username:
+        type: string
+    type: object
   models.Book:
     properties:
       author:
@@ -110,6 +124,30 @@ paths:
       summary: ping example
       tags:
       - example
+  /admin/me:
+    get:
+      description: Returns the authenticated admin's username, user id, and role from
+        JWT claims. Example admin-only route for RBAC.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Admin identity in standard envelope
+          schema:
+            $ref: '#/definitions/models.AdminMeAPIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+        "403":
+          description: Forbidden
+          schema:
+            type: string
+      security:
+      - ApiKeyAuth: []
+      summary: Current admin identity
+      tags:
+      - admin
   /books:
     get:
       description: Get a list of all books with optional pagination. List entries
