@@ -51,6 +51,12 @@ definitions:
     type: object
   models.LoginTokenBody:
     properties:
+      access_token:
+        type: string
+      expires_in:
+        type: integer
+      refresh_token:
+        type: string
       token:
         type: string
     type: object
@@ -64,12 +70,39 @@ definitions:
     - password
     - username
     type: object
+  models.LogoutAPIResponse:
+    properties:
+      data:
+        $ref: '#/definitions/models.LogoutSuccessBody'
+    type: object
+  models.LogoutRequest:
+    properties:
+      refresh_token:
+        type: string
+    type: object
+  models.LogoutSuccessBody:
+    properties:
+      message:
+        type: string
+    type: object
   models.PatchBook:
     properties:
       author:
         type: string
       title:
         type: string
+    type: object
+  models.RefreshAPIResponse:
+    properties:
+      data:
+        $ref: '#/definitions/models.LoginTokenBody'
+    type: object
+  models.RefreshRequest:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
     type: object
   models.RegisterAPIResponse:
     properties:
@@ -100,8 +133,9 @@ info:
     email: support@swagger.io
     name: API Support
     url: http://www.swagger.io/support
-  description: 'Go/Gin REST API template: books CRUD, register/login, Redis-backed
-    list cache, Postgres via GORM, Mongo access logs, rate limiting, and Swagger.'
+  description: 'Go/Gin REST API template: books CRUD, register/login/refresh/logout,
+    Redis-backed list cache and optional JWT denylist, Postgres via GORM, Mongo access
+    logs, rate limiting, and Swagger.'
   license:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
@@ -389,8 +423,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Authenticates a user using username and password, returns a JWT
-        token if successful
+      description: Authenticates a user using username and password; returns access
+        JWT and opaque refresh token
       parameters:
       - description: User login object
         in: body
@@ -402,7 +436,7 @@ paths:
       - application/json
       responses:
         "200":
-          description: JWT in standard envelope
+          description: Tokens in standard envelope
           schema:
             $ref: '#/definitions/models.LoginAPIResponse'
         "400":
@@ -420,6 +454,76 @@ paths:
       security:
       - ApiKeyAuth: []
       summary: Authenticate a user
+      tags:
+      - user
+  /logout:
+    post:
+      consumes:
+      - application/json
+      description: Revokes refresh token(s) for the authenticated user and denylists
+        the current access JWT when Redis denylist is enabled
+      parameters:
+      - description: Optional refresh token to revoke a single family
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/models.LogoutRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Logout confirmation
+          schema:
+            $ref: '#/definitions/models.LogoutAPIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      security:
+      - ApiKeyAuth: []
+      - JwtAuth: []
+      summary: Log out and revoke tokens
+      tags:
+      - user
+  /refresh:
+    post:
+      consumes:
+      - application/json
+      description: Exchanges a valid refresh token for a new access JWT and rotated
+        refresh token
+      parameters:
+      - description: Refresh token
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.RefreshRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: New tokens in standard envelope
+          schema:
+            $ref: '#/definitions/models.RefreshAPIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      security:
+      - ApiKeyAuth: []
+      summary: Refresh access token
       tags:
       - user
   /register:

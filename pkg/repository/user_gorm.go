@@ -28,6 +28,14 @@ func (s *GormUserStore) FindByUsername(username string) (*models.User, error) {
 	return &u, nil
 }
 
+func (s *GormUserStore) FindByID(id uint) (*models.User, error) {
+	var u models.User
+	if err := s.db.First(&u, id).Error; err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
 func (s *GormUserStore) Create(user *models.User) error {
 	err := s.db.Create(user).Error
 	if err == nil {

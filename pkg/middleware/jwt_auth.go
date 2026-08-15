@@ -18,10 +18,20 @@ const ContextUserID = "user_id"
 // set by JWTAuth after successful verification.
 const ContextRole = "role"
 
+// ContextJTI is the Gin context key for the access token jti claim.
+const ContextJTI = "jti"
+
+// ContextAccessExp is the Gin context key for the access token expiry time.Time.
+const ContextAccessExp = "access_exp"
+
 // JWTAuth returns Gin middleware that requires a valid Bearer JWT signed
 // with HMAC-SHA256 using the application's JWT secret. Other algorithms are
-// rejected before signature verification.
-func JWTAuth() gin.HandlerFunc {
+// rejected before signature verification. When denylist is non-nil, revoked
+// JTIs are rejected; a nil denylist skips the check (same as NoopDenylist).
+func JWTAuth(denylist auth.TokenDenylist) gin.HandlerFunc {
+	if denylist == nil {
+		denylist = auth.NoopDenylist{}
+	}
 	return func(c *gin.Context) {
 		const BearerSchema = "Bearer "
 		header := c.GetHeader("Authorization")
@@ -66,9 +76,25 @@ func JWTAuth() gin.HandlerFunc {
 			return
 		}
 
+		if claims.ID != "" {
+			denied, err := denylist.IsDenied(c.Request.Context(), claims.ID)
+			if err != nil {
+				httperr.Abort(c, http.StatusUnauthorized, "Invalid token")
+				return
+			}
+			if denied {
+				httperr.Abort(c, http.StatusUnauthorized, "Token revoked")
+				return
+			}
+		}
+
 		c.Set("username", claims.Username)
 		c.Set(ContextUserID, claims.UserID)
 		c.Set(ContextRole, claims.Role)
+		c.Set(ContextJTI, claims.ID)
+		if claims.ExpiresAt != nil {
+			c.Set(ContextAccessExp, claims.ExpiresAt.Time)
+		}
 		c.Next()
 	}
 }

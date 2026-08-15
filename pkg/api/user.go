@@ -3,7 +3,9 @@ package api
 import (
 	"errors"
 	"net/http"
+	"time"
 
+	"golang-rest-api-template/pkg/auth"
 	"golang-rest-api-template/pkg/httperr"
 	"golang-rest-api-template/pkg/httpresp"
 	"golang-rest-api-template/pkg/middleware"
@@ -18,6 +20,8 @@ import (
 type UserHandler interface {
 	LoginHandler(c *gin.Context)
 	RegisterHandler(c *gin.Context)
+	RefreshHandler(c *gin.Context)
+	LogoutHandler(c *gin.Context)
 	AdminMeHandler(c *gin.Context)
 }
 
@@ -25,9 +29,18 @@ type userHandler struct {
 	svc *service.UserService
 }
 
-// NewUserHandler wires persistence into user HTTP handlers.
-func NewUserHandler(store repository.UserPersistence) *userHandler {
-	return &userHandler{svc: service.NewUserService(store)}
+// NewUserHandler wires persistence and denylist into user HTTP handlers.
+func NewUserHandler(users repository.UserPersistence, refresh repository.RefreshTokenPersistence, denylist auth.TokenDenylist) *userHandler {
+	return &userHandler{svc: service.NewUserService(users, refresh, denylist)}
+}
+
+func tokenPairBody(p service.TokenPair) models.LoginTokenBody {
+	return models.LoginTokenBody{
+		Token:        p.AccessToken,
+		AccessToken:  p.AccessToken,
+		RefreshToken: p.RefreshToken,
+		ExpiresIn:    p.ExpiresIn,
+	}
 }
 
 // @BasePath /api/v1
@@ -35,13 +48,13 @@ func NewUserHandler(store repository.UserPersistence) *userHandler {
 // LoginHandler godoc
 // @Summary Authenticate a user
 // @Schemes
-// @Description Authenticates a user using username and password, returns a JWT token if successful
+// @Description Authenticates a user using username and password; returns access JWT and opaque refresh token
 // @Tags user
 // @Security ApiKeyAuth
 // @Accept  json
 // @Produce  json
 // @Param   user     body    models.LoginUser     true        "User login object"
-// @Success 200 {object} models.LoginAPIResponse "JWT in standard envelope"
+// @Success 200 {object} models.LoginAPIResponse "Tokens in standard envelope"
 // @Failure 400 {string} string "Bad Request"
 // @Failure 401 {string} string "Unauthorized"
 // @Failure 500 {string} string "Internal Server Error"
@@ -52,19 +65,92 @@ func (h *userHandler) LoginHandler(c *gin.Context) {
 		httperr.Write(c, http.StatusBadRequest, err.Error())
 		return
 	}
-	token, err := h.svc.Login(c.Request.Context(), incoming.Username, incoming.Password)
+	pair, err := h.svc.Login(c.Request.Context(), incoming.Username, incoming.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrInvalidLogin):
 			httperr.Write(c, http.StatusUnauthorized, "Invalid username or password")
-		case errors.Is(err, service.ErrLoginDB), errors.Is(err, service.ErrTokenGenerate):
+		case errors.Is(err, service.ErrLoginDB), errors.Is(err, service.ErrTokenGenerate), errors.Is(err, service.ErrRefreshPersist):
 			httperr.Write(c, http.StatusInternalServerError, "Internal Server Error")
 		default:
 			httperr.Write(c, http.StatusInternalServerError, "Internal Server Error")
 		}
 		return
 	}
-	httpresp.OK(c, models.LoginTokenBody{Token: token})
+	httpresp.OK(c, tokenPairBody(pair))
+}
+
+// RefreshHandler godoc
+// @Summary Refresh access token
+// @Schemes
+// @Description Exchanges a valid refresh token for a new access JWT and rotated refresh token
+// @Tags user
+// @Security ApiKeyAuth
+// @Accept  json
+// @Produce  json
+// @Param   body  body  models.RefreshRequest  true  "Refresh token"
+// @Success 200 {object} models.RefreshAPIResponse "New tokens in standard envelope"
+// @Failure 400 {string} string "Bad Request"
+// @Failure 401 {string} string "Unauthorized"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /refresh [post]
+func (h *userHandler) RefreshHandler(c *gin.Context) {
+	var incoming models.RefreshRequest
+	if err := c.ShouldBindJSON(&incoming); err != nil {
+		httperr.Write(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	pair, err := h.svc.Refresh(c.Request.Context(), incoming.RefreshToken)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidRefresh), errors.Is(err, service.ErrRefreshReuse):
+			httperr.Write(c, http.StatusUnauthorized, "Invalid refresh token")
+		case errors.Is(err, service.ErrRefreshPersist), errors.Is(err, service.ErrTokenGenerate), errors.Is(err, service.ErrLoginDB):
+			httperr.Write(c, http.StatusInternalServerError, "Internal Server Error")
+		default:
+			httperr.Write(c, http.StatusInternalServerError, "Internal Server Error")
+		}
+		return
+	}
+	httpresp.OK(c, tokenPairBody(pair))
+}
+
+// LogoutHandler godoc
+// @Summary Log out and revoke tokens
+// @Schemes
+// @Description Revokes refresh token(s) for the authenticated user and denylists the current access JWT when Redis denylist is enabled
+// @Tags user
+// @Security ApiKeyAuth
+// @Security JwtAuth
+// @Accept  json
+// @Produce  json
+// @Param   body  body  models.LogoutRequest  false  "Optional refresh token to revoke a single family"
+// @Success 200 {object} models.LogoutAPIResponse "Logout confirmation"
+// @Failure 401 {string} string "Unauthorized"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /logout [post]
+func (h *userHandler) LogoutHandler(c *gin.Context) {
+	var incoming models.LogoutRequest
+	// Empty body is allowed; bind errors only when body is present but invalid JSON.
+	if c.Request.ContentLength != 0 {
+		if err := c.ShouldBindJSON(&incoming); err != nil {
+			httperr.Write(c, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+
+	userID, _ := c.Get(middleware.ContextUserID)
+	uid, _ := userID.(uint)
+	jtiVal, _ := c.Get(middleware.ContextJTI)
+	jti, _ := jtiVal.(string)
+	expVal, _ := c.Get(middleware.ContextAccessExp)
+	exp, _ := expVal.(time.Time)
+
+	if err := h.svc.Logout(c.Request.Context(), uid, incoming.RefreshToken, jti, exp); err != nil {
+		httperr.Write(c, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	httpresp.OK(c, models.LogoutSuccessBody{Message: "Logged out"})
 }
 
 // RegisterHandler godoc

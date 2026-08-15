@@ -15,7 +15,7 @@ func setupSQLiteDB(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
 	assert.NoError(t, err)
 
-	err = db.AutoMigrate(&models.Book{}, &models.User{})
+	err = db.AutoMigrate(&models.Book{}, &models.User{}, &models.RefreshToken{})
 	assert.NoError(t, err)
 
 	return db

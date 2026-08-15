@@ -18,7 +18,7 @@ func testAdminRouter(t *testing.T) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	h := &userHandler{}
 	r := gin.New()
-	admin := r.Group("/admin", middleware.APIKeyAuth(), middleware.JWTAuth(), middleware.RequireRole(auth.RoleAdmin))
+	admin := r.Group("/admin", middleware.APIKeyAuth(), middleware.JWTAuth(auth.NoopDenylist{}), middleware.RequireRole(auth.RoleAdmin))
 	admin.GET("/me", h.AdminMeHandler)
 	return r
 }

@@ -39,8 +39,11 @@ def get_jwt_token():
     # Extracting JWT token from login response (standard envelope)
     body = login_response.json()
     data = body.get("data") or {}
-    jwt_token = data.get("token") if isinstance(data, dict) else None
+    jwt_token = None
+    if isinstance(data, dict):
+        jwt_token = data.get("access_token") or data.get("token")
     assert jwt_token is not None, "JWT token not found in login response"
+    assert data.get("refresh_token"), "refresh_token not found in login response"
 
     return jwt_token
 

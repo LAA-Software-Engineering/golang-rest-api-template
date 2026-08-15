@@ -110,6 +110,11 @@ func NewDatabase() *gorm.DB {
 		return nil
 	}
 
+	if err := database.AutoMigrate(&models.RefreshToken{}); err != nil {
+		log.Printf("Failed to migrate RefreshToken model: %v", err)
+		return nil
+	}
+
 	if err := configureConnPool(database); err != nil {
 		log.Printf("Failed to configure SQL connection pool: %v", err)
 		return nil
