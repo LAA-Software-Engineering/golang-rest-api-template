@@ -60,10 +60,10 @@ def create_book(jwt_token):
 
 
 # Get all books
-def get_books(jwt_token):
+def get_books(jwt_token, params=None):
     url = f"{BASE_URL}/books"
     auth_headers = {**headers, "Authorization": f"Bearer {jwt_token}"}
-    response = requests.get(url, headers=auth_headers)
+    response = requests.get(url, headers=auth_headers, params=params or {})
 
     assert response.status_code == 200, f"Failed to get books: {response.status_code}"
     return response.json()
@@ -127,6 +127,14 @@ def test_get_books(jwt_token):
     books = get_books(jwt_token)
     assert isinstance(books, dict), "Books response is not a dictionary"
     assert "data" in books, "Books data not found in response"
+
+
+def test_get_books_filtered(jwt_token):
+    created = create_book(jwt_token)
+    title = created["data"]["title"]
+    books = get_books(jwt_token, params={"title_like": title, "sort": "title", "order": "asc"})
+    assert "data" in books
+    assert any(b.get("title") == title for b in books["data"])
 
 
 def test_get_book(jwt_token):

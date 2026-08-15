@@ -11,6 +11,7 @@ import (
 
 	"golang-rest-api-template/pkg/cache"
 	"golang-rest-api-template/pkg/models"
+	"golang-rest-api-template/pkg/repository"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/stretchr/testify/assert"
@@ -18,7 +19,7 @@ import (
 )
 
 type fakeBookStore struct {
-	listFn   func(offset, limit int) ([]models.Book, error)
+	listFn   func(q repository.BookListQuery) ([]models.Book, error)
 	createFn func(book *models.Book) error
 	firstFn  func(id uint) (*models.Book, error)
 	updateFn func(id uint, title, author string) (*models.Book, error)
@@ -26,9 +27,9 @@ type fakeBookStore struct {
 	deleteFn func(id uint) error
 }
 
-func (f *fakeBookStore) List(offset, limit int) ([]models.Book, error) {
+func (f *fakeBookStore) List(q repository.BookListQuery) ([]models.Book, error) {
 	if f.listFn != nil {
-		return f.listFn(offset, limit)
+		return f.listFn(q)
 	}
 	return nil, nil
 }
@@ -68,21 +69,57 @@ func (f *fakeBookStore) DeleteByID(id uint) error {
 	return nil
 }
 
+func defaultListQuery(offset, limit int) repository.BookListQuery {
+	return repository.BookListQuery{
+		Offset: offset,
+		Limit:  limit,
+		Sort:   "id",
+		Order:  "asc",
+	}
+}
+
 func TestBooksListDataCacheKey(t *testing.T) {
-	assert.Equal(t, "books_g2_offset_5_limit_10", BooksListDataCacheKey(2, 5, 10))
+	q := repository.BookListQuery{
+		Offset: 5, Limit: 10, TitleLike: "go", AuthorLike: "ann",
+		Sort: "title", Order: "desc",
+	}
+	assert.Equal(t,
+		"books_g2_offset_5_limit_10_title_676f_author_616e6e_owner___sort_title_order_desc",
+		BooksListDataCacheKey(2, q),
+	)
+	owner := uint(7)
+	q.OwnerID = &owner
+	assert.Equal(t,
+		"books_g2_offset_5_limit_10_title_676f_author_616e6e_owner_7_sort_title_order_desc",
+		BooksListDataCacheKey(2, q),
+	)
+}
+
+func TestBooksListDataCacheKeyDelimiterCollision(t *testing.T) {
+	// Raw string interpolation would make these collide; hex encoding must not.
+	q1 := defaultListQuery(0, 10)
+	q1.TitleLike = "x_author_y"
+	q1.AuthorLike = "z"
+	q2 := defaultListQuery(0, 10)
+	q2.TitleLike = "x"
+	q2.AuthorLike = "y_author_z"
+	assert.NotEqual(t, BooksListDataCacheKey(0, q1), BooksListDataCacheKey(0, q2))
 }
 
 func TestListBooksNilRedisUsesStore(t *testing.T) {
 	want := []models.Book{{ID: 1, Title: "a", Author: "b"}}
 	store := &fakeBookStore{
-		listFn: func(offset, limit int) ([]models.Book, error) {
-			assert.Equal(t, 3, offset)
-			assert.Equal(t, 7, limit)
+		listFn: func(q repository.BookListQuery) ([]models.Book, error) {
+			assert.Equal(t, 3, q.Offset)
+			assert.Equal(t, 7, q.Limit)
+			assert.Equal(t, "go", q.TitleLike)
 			return want, nil
 		},
 	}
 	svc := NewBookService(store, nil)
-	got, err := svc.ListBooks(context.Background(), 3, 7)
+	q := defaultListQuery(3, 7)
+	q.TitleLike = "go"
+	got, err := svc.ListBooks(context.Background(), q)
 	assert.NoError(t, err)
 	assert.Equal(t, want, got)
 }
@@ -95,7 +132,8 @@ func TestListBooksCacheHit(t *testing.T) {
 	want := []models.Book{{ID: 9, Title: "cached", Author: "x"}}
 	payload, err := json.Marshal(want)
 	assert.NoError(t, err)
-	dataKey := BooksListDataCacheKey(0, 0, 10)
+	q := defaultListQuery(0, 10)
+	dataKey := BooksListDataCacheKey(0, q)
 
 	gomock.InOrder(
 		mockRedis.EXPECT().Get(gomock.Any(), BooksListCacheGenKey).Return(redis.NewStringResult("", redis.Nil)),
@@ -103,13 +141,13 @@ func TestListBooksCacheHit(t *testing.T) {
 	)
 
 	store := &fakeBookStore{
-		listFn: func(offset, limit int) ([]models.Book, error) {
+		listFn: func(q repository.BookListQuery) ([]models.Book, error) {
 			t.Fatal("store.List should not run on cache hit")
 			return nil, nil
 		},
 	}
 	svc := NewBookService(store, mockRedis)
-	got, err := svc.ListBooks(context.Background(), 0, 10)
+	got, err := svc.ListBooks(context.Background(), q)
 	assert.NoError(t, err)
 	assert.Equal(t, want, got)
 }
@@ -118,7 +156,8 @@ func TestListBooksCacheUnmarshalError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	mockRedis := cache.NewMockCache(ctrl)
-	dataKey := BooksListDataCacheKey(0, 1, 5)
+	q := defaultListQuery(1, 5)
+	dataKey := BooksListDataCacheKey(0, q)
 
 	gomock.InOrder(
 		mockRedis.EXPECT().Get(gomock.Any(), BooksListCacheGenKey).Return(redis.NewStringResult("0", nil)),
@@ -126,7 +165,7 @@ func TestListBooksCacheUnmarshalError(t *testing.T) {
 	)
 
 	svc := NewBookService(&fakeBookStore{}, mockRedis)
-	_, err := svc.ListBooks(context.Background(), 1, 5)
+	_, err := svc.ListBooks(context.Background(), q)
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, ErrListBooksUnmarshal)
 }
@@ -135,7 +174,8 @@ func TestListBooksStoreError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	mockRedis := cache.NewMockCache(ctrl)
-	dataKey := BooksListDataCacheKey(0, 0, 10)
+	q := defaultListQuery(0, 10)
+	dataKey := BooksListDataCacheKey(0, q)
 	dbErr := errors.New("db down")
 
 	gomock.InOrder(
@@ -144,12 +184,12 @@ func TestListBooksStoreError(t *testing.T) {
 	)
 
 	store := &fakeBookStore{
-		listFn: func(offset, limit int) ([]models.Book, error) {
+		listFn: func(q repository.BookListQuery) ([]models.Book, error) {
 			return nil, dbErr
 		},
 	}
 	svc := NewBookService(store, mockRedis)
-	_, err := svc.ListBooks(context.Background(), 0, 10)
+	_, err := svc.ListBooks(context.Background(), q)
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, ErrListBooksDB)
 }
@@ -161,14 +201,15 @@ func TestListBooksSingleflightCoalescesConcurrentMiss(t *testing.T) {
 
 	var listCalls atomic.Int32
 	store := &fakeBookStore{
-		listFn: func(offset, limit int) ([]models.Book, error) {
+		listFn: func(q repository.BookListQuery) ([]models.Book, error) {
 			listCalls.Add(1)
 			time.Sleep(25 * time.Millisecond)
 			return []models.Book{{ID: 1, Title: "t", Author: "a"}}, nil
 		},
 	}
 
-	dataKey := BooksListDataCacheKey(0, 0, 10)
+	q := defaultListQuery(0, 10)
+	dataKey := BooksListDataCacheKey(0, q)
 	var mu sync.Mutex
 	cached := ""
 
@@ -212,7 +253,7 @@ func TestListBooksSingleflightCoalescesConcurrentMiss(t *testing.T) {
 	for i := 0; i < n; i++ {
 		go func() {
 			defer wg.Done()
-			_, _ = svc.ListBooks(context.Background(), 0, 10)
+			_, _ = svc.ListBooks(context.Background(), q)
 		}()
 	}
 	wg.Wait()
@@ -224,7 +265,8 @@ func TestListBooksRedisSetError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	mockRedis := cache.NewMockCache(ctrl)
-	dataKey := BooksListDataCacheKey(0, 0, 10)
+	q := defaultListQuery(0, 10)
+	dataKey := BooksListDataCacheKey(0, q)
 	want := []models.Book{{Title: "t", Author: "a"}}
 
 	gomock.InOrder(
@@ -234,14 +276,54 @@ func TestListBooksRedisSetError(t *testing.T) {
 	mockRedis.EXPECT().Set(gomock.Any(), dataKey, gomock.Any(), time.Minute).Return(redis.NewStatusResult("", errors.New("set failed")))
 
 	store := &fakeBookStore{
-		listFn: func(offset, limit int) ([]models.Book, error) {
+		listFn: func(q repository.BookListQuery) ([]models.Book, error) {
 			return want, nil
 		},
 	}
 	svc := NewBookService(store, mockRedis)
-	_, err := svc.ListBooks(context.Background(), 0, 10)
+	_, err := svc.ListBooks(context.Background(), q)
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, ErrListBooksRedis)
+}
+
+func TestListBooksDistinctFiltersUseDistinctCacheKeys(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockRedis := cache.NewMockCache(ctrl)
+
+	q1 := defaultListQuery(0, 10)
+	q1.TitleLike = "go"
+	q2 := defaultListQuery(0, 10)
+	q2.TitleLike = "rust"
+	key1 := BooksListDataCacheKey(0, q1)
+	key2 := BooksListDataCacheKey(0, q2)
+	assert.NotEqual(t, key1, key2)
+
+	payload, err := json.Marshal([]models.Book{{Title: "go book"}})
+	assert.NoError(t, err)
+
+	mockRedis.EXPECT().Get(gomock.Any(), BooksListCacheGenKey).Return(redis.NewStringResult("", redis.Nil)).Times(2)
+	mockRedis.EXPECT().Get(gomock.Any(), key1).Return(redis.NewStringResult(string(payload), nil))
+	mockRedis.EXPECT().Get(gomock.Any(), key2).Return(redis.NewStringResult("", redis.Nil))
+	mockRedis.EXPECT().Set(gomock.Any(), key2, gomock.Any(), time.Minute).Return(redis.NewStatusResult("OK", nil))
+
+	var listedQ repository.BookListQuery
+	store := &fakeBookStore{
+		listFn: func(q repository.BookListQuery) ([]models.Book, error) {
+			listedQ = q
+			return []models.Book{{Title: "rust book"}}, nil
+		},
+	}
+	svc := NewBookService(store, mockRedis)
+
+	got1, err := svc.ListBooks(context.Background(), q1)
+	assert.NoError(t, err)
+	assert.Equal(t, "go book", got1[0].Title)
+
+	got2, err := svc.ListBooks(context.Background(), q2)
+	assert.NoError(t, err)
+	assert.Equal(t, "rust book", got2[0].Title)
+	assert.Equal(t, "rust", listedQ.TitleLike)
 }
 
 func TestCreateBookBumpsGenerationWhenRedis(t *testing.T) {

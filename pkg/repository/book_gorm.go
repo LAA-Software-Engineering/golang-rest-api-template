@@ -2,11 +2,33 @@ package repository
 
 import (
 	"errors"
+	"strings"
 
 	"golang-rest-api-template/pkg/models"
 
 	"gorm.io/gorm"
 )
+
+// BookListSortFields is the allowlisted set of sort query values for listing books.
+var BookListSortFields = map[string]struct{}{
+	"id": {}, "title": {}, "author": {}, "created_at": {}, "updated_at": {}, "owner_id": {},
+}
+
+// Static ORDER BY clauses keyed by "field|asc" / "field|desc" (no user-string concat).
+var bookListOrderBy = map[string]string{
+	"id|asc":          "id ASC",
+	"id|desc":         "id DESC",
+	"title|asc":       "title ASC",
+	"title|desc":      "title DESC",
+	"author|asc":      "author ASC",
+	"author|desc":     "author DESC",
+	"created_at|asc":  "created_at ASC",
+	"created_at|desc": "created_at DESC",
+	"updated_at|asc":  "updated_at ASC",
+	"updated_at|desc": "updated_at DESC",
+	"owner_id|asc":    "owner_id ASC",
+	"owner_id|desc":   "owner_id DESC",
+}
 
 // GormBookStore implements BookPersistence using GORM.
 type GormBookStore struct {
@@ -18,9 +40,46 @@ func NewGormBookStore(db *gorm.DB) *GormBookStore {
 	return &GormBookStore{db: db}
 }
 
-func (s *GormBookStore) List(offset, limit int) ([]models.Book, error) {
+func escapeLikePattern(s string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return replacer.Replace(s)
+}
+
+func (s *GormBookStore) List(q BookListQuery) ([]models.Book, error) {
+	db := s.db.Model(&models.Book{})
+
+	if q.TitleLike != "" {
+		pattern := "%" + strings.ToLower(escapeLikePattern(q.TitleLike)) + "%"
+		db = db.Where("LOWER(title) LIKE ? ESCAPE '\\'", pattern)
+	}
+	if q.AuthorLike != "" {
+		pattern := "%" + strings.ToLower(escapeLikePattern(q.AuthorLike)) + "%"
+		db = db.Where("LOWER(author) LIKE ? ESCAPE '\\'", pattern)
+	}
+	if q.OwnerID != nil {
+		db = db.Where("owner_id = ?", *q.OwnerID)
+	}
+
+	sort := strings.ToLower(strings.TrimSpace(q.Sort))
+	if _, ok := BookListSortFields[sort]; !ok {
+		sort = "id"
+	}
+	order := strings.ToLower(strings.TrimSpace(q.Order))
+	if order != "desc" {
+		order = "asc"
+	}
+	clause := bookListOrderBy[sort+"|"+order]
+	if clause == "" {
+		clause = "id ASC"
+	}
+	db = db.Order(clause)
+	// Stable pagination when the primary column has ties.
+	if sort != "id" {
+		db = db.Order("id ASC")
+	}
+
 	var out []models.Book
-	err := s.db.Offset(offset).Limit(limit).Find(&out).Error
+	err := db.Offset(q.Offset).Limit(q.Limit).Find(&out).Error
 	return out, err
 }
 

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,8 +28,20 @@ var (
 )
 
 // BooksListDataCacheKey is the Redis key for a cached books list page (tests and docs).
-func BooksListDataCacheKey(gen int64, offset, limit int) string {
-	return fmt.Sprintf("books_g%d_offset_%d_limit_%d", gen, offset, limit)
+// Free-form filter strings are hex-encoded so delimiter substrings cannot collide
+// distinct queries onto the same key (or singleflight key).
+func BooksListDataCacheKey(gen int64, q repository.BookListQuery) string {
+	owner := "_"
+	if q.OwnerID != nil {
+		owner = fmt.Sprintf("%d", *q.OwnerID)
+	}
+	return fmt.Sprintf(
+		"books_g%d_offset_%d_limit_%d_title_%s_author_%s_owner_%s_sort_%s_order_%s",
+		gen, q.Offset, q.Limit,
+		hex.EncodeToString([]byte(q.TitleLike)),
+		hex.EncodeToString([]byte(q.AuthorLike)),
+		owner, q.Sort, q.Order,
+	)
 }
 
 // BookService coordinates book reads/writes, list caching, and cache generation bumps.
@@ -67,14 +80,14 @@ func (s *BookService) bumpListCacheGeneration(ctx context.Context) {
 	_, _ = s.redis.Incr(ctx, BooksListCacheGenKey).Result()
 }
 
-// ListBooks returns books for offset/limit using Redis list cache and singleflight on miss.
-func (s *BookService) ListBooks(ctx context.Context, offset, limit int) ([]models.Book, error) {
+// ListBooks returns books for the given query using Redis list cache and singleflight on miss.
+func (s *BookService) ListBooks(ctx context.Context, q repository.BookListQuery) ([]models.Book, error) {
 	if s.redis == nil {
-		return s.store.List(offset, limit)
+		return s.store.List(q)
 	}
 
 	gen := s.cacheGeneration(ctx)
-	cacheKey := BooksListDataCacheKey(gen, offset, limit)
+	cacheKey := BooksListDataCacheKey(gen, q)
 
 	cachedBooks, err := s.redis.Get(ctx, cacheKey).Result()
 	if err == nil {
@@ -86,7 +99,7 @@ func (s *BookService) ListBooks(ctx context.Context, offset, limit int) ([]model
 	}
 
 	out, err, _ := s.listSF.Do(cacheKey, func() (interface{}, error) {
-		loaded, err := s.store.List(offset, limit)
+		loaded, err := s.store.List(q)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrListBooksDB, err)
 		}
