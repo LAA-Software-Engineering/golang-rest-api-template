@@ -78,21 +78,6 @@ func (m *memRefreshStore) FindByHash(tokenHash string) (*models.RefreshToken, er
 	return &cp, nil
 }
 
-func (m *memRefreshStore) MarkConsumed(id uint, at time.Time) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for _, t := range m.byHash {
-		if t.ID == id {
-			if t.ConsumedAt != nil || t.RevokedAt != nil {
-				return repository.ErrRefreshAlreadyConsumed
-			}
-			t.ConsumedAt = &at
-			return nil
-		}
-	}
-	return gorm.ErrRecordNotFound
-}
-
 func (m *memRefreshStore) RotateAtomically(oldID uint, at time.Time, next *models.RefreshToken) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

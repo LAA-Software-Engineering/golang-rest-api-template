@@ -118,7 +118,7 @@ func TestRedisDenylistUserRevokeBefore(t *testing.T) {
 
 	revoked, err = d.IsUserRevoked(ctx, 42, before)
 	require.NoError(t, err)
-	assert.False(t, revoked) // stored > iat only
+	assert.True(t, revoked) // same-second iat is covered (ts >= iat)
 
 	revoked, err = d.IsUserRevoked(ctx, 42, before.Add(time.Second))
 	require.NoError(t, err)

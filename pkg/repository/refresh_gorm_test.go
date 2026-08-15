@@ -70,6 +70,8 @@ func TestGormRefreshTokenRotateAtomicallyConcurrent(t *testing.T) {
 	require.NoError(t, db.AutoMigrate(&models.RefreshToken{}))
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
+	// SQLite: single connection so conditional UPDATEs serialize. This checks
+	// RowsAffected contention at the API layer, not multi-connection Postgres races.
 	sqlDB.SetMaxOpenConns(1)
 
 	store := NewGormRefreshTokenStore(db)

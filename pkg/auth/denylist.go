@@ -32,7 +32,7 @@ type TokenDenylist interface {
 	// as revoked. The Redis entry TTL is AccessTokenTTL().
 	DenyUserBefore(ctx context.Context, userID uint, before time.Time) error
 	// IsUserRevoked reports whether an access token issued at iat is covered by
-	// a user-level revoke_before cutoff (stored value > iat).
+	// a user-level revoke_before cutoff (stored value >= iat unix seconds).
 	IsUserRevoked(ctx context.Context, userID uint, iat time.Time) (bool, error)
 }
 
@@ -138,7 +138,7 @@ func (d *RedisDenylist) IsUserRevoked(ctx context.Context, userID uint, iat time
 		log.Printf("auth: invalid revoke_before value %q (fail-open): %v", s, err)
 		return false, nil
 	}
-	return ts > iat.Unix(), nil
+	return ts >= iat.Unix(), nil
 }
 
 // TokenDenylistEnabled reports whether TOKEN_DENYLIST_ENABLED is affirmative.

@@ -145,7 +145,7 @@ func (m mapDenylist) IsUserRevoked(_ context.Context, userID uint, iat time.Time
 	if !ok {
 		return false, nil
 	}
-	return before.Unix() > iat.Unix(), nil
+	return !before.Before(iat), nil // before >= iat
 }
 
 func TestJWTAuthRejectsDenylistedJTI(t *testing.T) {

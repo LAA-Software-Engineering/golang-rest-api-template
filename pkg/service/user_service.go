@@ -130,6 +130,10 @@ func (s *UserService) Refresh(ctx context.Context, refreshPlaintext string) (Tok
 	}
 
 	if err := s.refresh.RotateAtomically(row.ID, now, next); err != nil {
+		// Lost race or concurrent use of the same refresh: treat like reuse and
+		// revoke the whole family. That is theft-safe (two parties racing) but a
+		// legitimate double-submit can also kill the winner's new refresh and
+		// force re-login — intentional for this security-first template.
 		if errors.Is(err, repository.ErrRefreshAlreadyConsumed) {
 			if revErr := s.refresh.RevokeFamily(row.FamilyID, now); revErr != nil {
 				return zero, fmtError(ErrRefreshPersist, revErr)
