@@ -30,10 +30,20 @@ func (s *GormRefreshTokenStore) FindByHash(tokenHash string) (*models.RefreshTok
 	return &t, nil
 }
 
-func (s *GormRefreshTokenStore) MarkConsumed(id uint, at time.Time) error {
-	return s.db.Model(&models.RefreshToken{}).Where("id = ?", id).Updates(map[string]interface{}{
-		"consumed_at": at,
-	}).Error
+// RotateAtomically conditionally consumes oldID and inserts next in one TX.
+func (s *GormRefreshTokenStore) RotateAtomically(oldID uint, at time.Time, next *models.RefreshToken) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&models.RefreshToken{}).
+			Where("id = ? AND consumed_at IS NULL AND revoked_at IS NULL", oldID).
+			Updates(map[string]interface{}{"consumed_at": at})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected != 1 {
+			return ErrRefreshAlreadyConsumed
+		}
+		return tx.Create(next).Error
+	})
 }
 
 func (s *GormRefreshTokenStore) RevokeFamily(familyID string, at time.Time) error {

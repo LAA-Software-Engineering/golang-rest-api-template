@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"time"
 
@@ -131,12 +132,10 @@ func (h *userHandler) RefreshHandler(c *gin.Context) {
 // @Router /logout [post]
 func (h *userHandler) LogoutHandler(c *gin.Context) {
 	var incoming models.LogoutRequest
-	// Empty body is allowed; bind errors only when body is present but invalid JSON.
-	if c.Request.ContentLength != 0 {
-		if err := c.ShouldBindJSON(&incoming); err != nil {
-			httperr.Write(c, http.StatusBadRequest, err.Error())
-			return
-		}
+	// Empty body is allowed (logout-all). Gin returns io.EOF for empty JSON body.
+	if err := c.ShouldBindJSON(&incoming); err != nil && !errors.Is(err, io.EOF) {
+		httperr.Write(c, http.StatusBadRequest, err.Error())
+		return
 	}
 
 	userID, _ := c.Get(middleware.ContextUserID)

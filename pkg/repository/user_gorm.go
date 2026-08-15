@@ -61,7 +61,14 @@ func isUsernameUniqueConstraintError(err error) bool {
 	return strings.Contains(s, "duplicate key") && strings.Contains(s, "unique")
 }
 
-// IsUserNotFound reports whether err is a missing-user lookup from GORM.
-func IsUserNotFound(err error) bool {
+// IsNotFound reports whether err is a GORM record-not-found result (users,
+// refresh tokens, or other First/ lookups).
+func IsNotFound(err error) bool {
 	return errors.Is(err, gorm.ErrRecordNotFound)
+}
+
+// IsUserNotFound reports whether err is a missing-user lookup from GORM.
+// Prefer IsNotFound for non-user entities; this alias is kept for call sites.
+func IsUserNotFound(err error) bool {
+	return IsNotFound(err)
 }
