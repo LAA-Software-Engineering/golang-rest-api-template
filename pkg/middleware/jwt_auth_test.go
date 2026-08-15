@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"golang-rest-api-template/pkg/auth"
 	"net/http"
@@ -28,7 +29,7 @@ func testRouterJWTAuthOnly(t *testing.T) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.GET("/protected", JWTAuth(), func(c *gin.Context) {
+	r.GET("/protected", JWTAuth(auth.NoopDenylist{}), func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})
 	return r
@@ -101,7 +102,7 @@ func TestJWTAuthSetsUsernameContext(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	var got string
-	r.GET("/p", JWTAuth(), func(c *gin.Context) {
+	r.GET("/p", JWTAuth(auth.NoopDenylist{}), func(c *gin.Context) {
 		v, ok := c.Get("username")
 		if !ok {
 			t.Error("username not in context")
@@ -123,6 +124,42 @@ func TestJWTAuthSetsUsernameContext(t *testing.T) {
 	}
 }
 
+type mapDenylist struct {
+	denied map[string]bool
+}
+
+func (m mapDenylist) Deny(context.Context, string, time.Time) error { return nil }
+
+func (m mapDenylist) IsDenied(_ context.Context, jti string) (bool, error) {
+	return m.denied[jti], nil
+}
+
+func TestJWTAuthRejectsDenylistedJTI(t *testing.T) {
+	token, err := auth.GenerateToken("deny-user", 1, auth.RoleUser)
+	if err != nil {
+		t.Fatalf("GenerateToken: %v", err)
+	}
+	claims := &auth.Claims{}
+	if _, err := jwt.ParseWithClaims(token, claims, auth.JWTKeyFunc(auth.JWTSigningKey())); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/p", JWTAuth(mapDenylist{denied: map[string]bool{claims.ID: true}}), func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+	req := httptest.NewRequest(http.MethodGet, "/p", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "Token revoked") {
+		t.Fatalf("body=%q", rec.Body.String())
+	}
+}
+
 func TestJWTAuthSetsUserIDContext(t *testing.T) {
 	const wantID uint = 77
 	token, err := auth.GenerateToken("uid-ctx-user", wantID, auth.RoleUser)
@@ -132,7 +169,7 @@ func TestJWTAuthSetsUserIDContext(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	var got uint
-	r.GET("/p", JWTAuth(), func(c *gin.Context) {
+	r.GET("/p", JWTAuth(auth.NoopDenylist{}), func(c *gin.Context) {
 		v, ok := c.Get(ContextUserID)
 		if !ok {
 			t.Error("user id not in context")
@@ -162,7 +199,7 @@ func TestJWTAuthSetsRoleContext(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	var got string
-	r.GET("/p", JWTAuth(), func(c *gin.Context) {
+	r.GET("/p", JWTAuth(auth.NoopDenylist{}), func(c *gin.Context) {
 		v, ok := c.Get(ContextRole)
 		if !ok {
 			t.Error("role not in context")

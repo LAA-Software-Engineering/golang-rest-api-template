@@ -28,9 +28,9 @@ func testBookWriteMiddlewareStack(t *testing.T) *gin.Engine {
 			c.Status(http.StatusOK)
 		}
 	}
-	r.PUT("/api/v1/books/:id", middleware.APIKeyAuth(), middleware.JWTAuth(), ok)
-	r.PATCH("/api/v1/books/:id", middleware.APIKeyAuth(), middleware.JWTAuth(), ok)
-	r.DELETE("/api/v1/books/:id", middleware.APIKeyAuth(), middleware.JWTAuth(), ok)
+	r.PUT("/api/v1/books/:id", middleware.APIKeyAuth(), middleware.JWTAuth(auth.NoopDenylist{}), ok)
+	r.PATCH("/api/v1/books/:id", middleware.APIKeyAuth(), middleware.JWTAuth(auth.NoopDenylist{}), ok)
+	r.DELETE("/api/v1/books/:id", middleware.APIKeyAuth(), middleware.JWTAuth(auth.NoopDenylist{}), ok)
 	return r
 }
 

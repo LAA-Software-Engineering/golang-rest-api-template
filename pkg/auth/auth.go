@@ -135,6 +135,7 @@ func bcryptCostForPasswordHashing() int {
 // GenerateToken issues an HS256 JWT with username, user_id, and role claims.
 // userID must be non-zero (database primary key of the authenticated user).
 // role must be a known application role (see ValidRole).
+// The token includes jti and iat so logout can denylist the access token until exp.
 func GenerateToken(username string, userID uint, role string) (string, error) {
 	if userID == 0 {
 		return "", fmt.Errorf("auth.GenerateToken: user id must be non-zero")
@@ -149,13 +150,21 @@ func GenerateToken(username string, userID uint, role string) (string, error) {
 		return "", fmt.Errorf("auth.GenerateToken: %w", ErrJWTSigningKeyNotConfigured)
 	}
 
-	exp := time.Now().Add(5 * time.Minute)
+	jti, err := NewOpaqueToken()
+	if err != nil {
+		return "", fmt.Errorf("auth.GenerateToken: jti: %w", err)
+	}
+
+	now := time.Now()
+	exp := now.Add(AccessTokenTTL())
 	claims := &Claims{
 		Username: username,
 		UserID:   userID,
 		Role:     role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(exp),
+			IssuedAt:  jwt.NewNumericDate(now),
+			ID:        jti,
 		},
 	}
 

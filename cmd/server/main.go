@@ -21,7 +21,7 @@ import (
 
 // @title           golang-rest-api-template
 // @version         1.0
-// @description     Go/Gin REST API template: books CRUD, register/login, Redis-backed list cache, Postgres via GORM, Mongo access logs, rate limiting, and Swagger.
+// @description     Go/Gin REST API template: books CRUD, register/login/refresh/logout, Redis-backed list cache and optional JWT denylist, Postgres via GORM, Mongo access logs, rate limiting, and Swagger.
 // @termsOfService  http://swagger.io/terms/
 
 // @contact.name   API Support

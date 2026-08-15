@@ -10,6 +10,16 @@ type LoginAPIResponse struct {
 	Data LoginTokenBody `json:"data"`
 }
 
+// RefreshAPIResponse documents POST /refresh 200 JSON.
+type RefreshAPIResponse struct {
+	Data LoginTokenBody `json:"data"`
+}
+
+// LogoutAPIResponse documents POST /logout 200 JSON.
+type LogoutAPIResponse struct {
+	Data LogoutSuccessBody `json:"data"`
+}
+
 // RegisterAPIResponse documents POST /register 201 JSON.
 type RegisterAPIResponse struct {
 	Data RegisterSuccessBody `json:"data"`

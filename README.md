@@ -120,7 +120,7 @@ golang-rest-api-template/
 
 ### Prerequisites
 
-- Go 1.25.12 or newer (see `go.mod`; aligns CI and Docker with `govulncheck` / patched stdlib)
+- Go 1.25.13 or newer (see `go.mod`; aligns CI and Docker with `govulncheck` / patched stdlib)
 - Docker
 - Docker Compose
 
@@ -181,6 +181,9 @@ Names below match `os.Getenv` usage in this repository:
 | `REDIS_READ_TIMEOUT` | Read timeout (default `3s`) |
 | `REDIS_WRITE_TIMEOUT` | Write timeout (default `3s`) |
 | `JWT_SECRET_KEY` | Secret for signing JWTs (`pkg/auth/auth.go`) |
+| `ACCESS_TOKEN_TTL` | Optional access JWT lifetime (Go duration; default `5m`) |
+| `REFRESH_TOKEN_TTL` | Optional opaque refresh token lifetime (Go duration; default `168h` / 7 days) |
+| `TOKEN_DENYLIST_ENABLED` | Optional Redis `jti` denylist for logout (`true`/`false`; default on). When off or Redis is unavailable, login/refresh/logout still work via Postgres; access JWTs remain valid until natural expiry after logout. |
 | `BCRYPT_COST` | Optional bcrypt work factor for **new** password hashes (integer `10`–`31`; default **`12`**, was 14). Values below `10` clamp to `10` with a log line. See [#128](https://github.com/LAA-Software-Engineering/golang-rest-api-template/issues/128). |
 | `API_SECRET_KEY` | Secret compared to the `X-API-Key` header (`pkg/middleware/api_key.go`) |
 | `GIN_MODE` | Standard Gin variable: `debug` (default if unset), `release` (enables Security + XSS middleware in `pkg/api/router.go`), or `test` |
@@ -230,14 +233,16 @@ http://localhost:8001/swagger/index.html
 - `PUT /api/v1/books/:id`: Replace a book's title and author (both fields required in the JSON body).
 - `PATCH /api/v1/books/:id`: Partially update a book (send only the fields to change; at least one of `title` or `author` is required).
 - `DELETE /api/v1/books/:id`: Delete a book.
-- `POST /api/v1/login`: Login.
+- `POST /api/v1/login`: Login (returns access JWT + opaque refresh token).
+- `POST /api/v1/refresh`: Rotate refresh token and issue a new access JWT.
+- `POST /api/v1/logout`: Revoke refresh token(s); denylist access JWT `jti` when Redis denylist is enabled.
 - `POST /api/v1/register`: Register a new user.
 - `GET /api/v1/admin/me`: Admin-only identity probe (API key + JWT with `role=admin`).
 - `GET /swagger/*`: Swagger UI (no `X-API-Key`).
 
 ### JSON responses
 
-Successful `/api/v1` JSON responses use a single envelope: **`{"data": ...}`** (implemented in `pkg/httpresp`). Examples: `GET /api/v1/` returns `{"data":"ok"}`; book list and book CRUD return the resource or collection inside `data`; `POST /api/v1/login` returns `{"data":{"token":"<jwt>"}}`; `POST /api/v1/register` returns `{"data":{"message":"Registration successful"}}`.
+Successful `/api/v1` JSON responses use a single envelope: **`{"data": ...}`** (implemented in `pkg/httpresp`). Examples: `GET /api/v1/` returns `{"data":"ok"}`; book list and book CRUD return the resource or collection inside `data`; `POST /api/v1/login` returns `{"data":{"token":"<jwt>","access_token":"<jwt>","refresh_token":"...","expires_in":300}}` (`token` aliases `access_token` for older clients); `POST /api/v1/register` returns `{"data":{"message":"Registration successful"}}`.
 
 Error responses use **`{"error":"..."}`** (`pkg/httperr`). RFC 7807-style problem details are not used yet.
 
@@ -245,7 +250,9 @@ Error responses use **`{"error":"..."}`** (`pkg/httperr`). RFC 7807-style proble
 
 Under **`/api/v1`**, every route **except** `GET /api/v1/` (health) requires the **`X-API-Key`** header matching **`API_SECRET_KEY`** (service-to-service gate).
 
-Book **mutations** (`POST`, `PUT`, `PATCH`, and `DELETE` on `/api/v1/books` and `/api/v1/books/:id`) also require a valid user JWT in `Authorization: Bearer <token>` (obtain a token from `POST /api/v1/login`; the JWT string is at **`data.token`** in the JSON body). Book **reads** (`GET` list and `GET` by id) require the API key only.
+Book **mutations** (`POST`, `PUT`, `PATCH`, and `DELETE` on `/api/v1/books` and `/api/v1/books/:id`) also require a valid user JWT in `Authorization: Bearer <token>` (obtain tokens from `POST /api/v1/login`; the access JWT is at **`data.access_token`** or legacy **`data.token`**). Book **reads** (`GET` list and `GET` by id) require the API key only.
+
+Access JWTs are short-lived (default 5 minutes, configurable via `ACCESS_TOKEN_TTL`) and include `jti` / `iat`. Use `POST /api/v1/refresh` with `{"refresh_token":"..."}` to rotate the opaque refresh token (stored hashed in Postgres) and obtain a new pair. Reuse of a consumed refresh token revokes that token family. `POST /api/v1/logout` (API key + Bearer access JWT) revokes refresh tokens; when `TOKEN_DENYLIST_ENABLED` is on and Redis is reachable, the access JWT `jti` is denylisted until expiry.
 
 JWTs include a **`role`** claim (`user` or `admin`). New registrations get `user`. Protect admin routes with `middleware.RequireRole(auth.RoleAdmin)` after `JWTAuth` (see `GET /api/v1/admin/me`). Promote a user by setting `users.role` to `admin` in the database, then logging in again so the new role is embedded in the token.
 

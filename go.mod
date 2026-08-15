@@ -1,6 +1,6 @@
 module golang-rest-api-template
 
-go 1.25.12
+go 1.25.13
 
 require (
 	github.com/araujo88/gin-gonic-xss-middleware v0.0.0-20221014023455-d89f16de6a7e

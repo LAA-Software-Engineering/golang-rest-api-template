@@ -22,8 +22,15 @@ import (
 
 // NewRouter builds the Gin engine with middleware, Swagger, and API routes.
 func NewRouter(logger *zap.Logger, mongoCollection *mongo.Collection, db *gorm.DB, redisClient cache.Cache) *gin.Engine {
+	denylist := auth.NewTokenDenylistFromEnv(redisClient)
+	jwtAuth := middleware.JWTAuth(denylist)
+
 	books := NewBookHandler(repository.NewGormBookStore(db), redisClient)
-	users := NewUserHandler(repository.NewGormUserStore(db))
+	users := NewUserHandler(
+		repository.NewGormUserStore(db),
+		repository.NewGormRefreshTokenStore(db),
+		denylist,
+	)
 
 	r := gin.Default()
 	if err := configureTrustedProxies(r); err != nil {
@@ -56,16 +63,18 @@ func NewRouter(logger *zap.Logger, mongoCollection *mongo.Collection, db *gorm.D
 	{
 		v1.GET("/", books.Healthcheck)
 		v1.GET("/books", middleware.APIKeyAuth(), books.FindBooks)
-		v1.POST("/books", middleware.APIKeyAuth(), middleware.JWTAuth(), books.CreateBook)
+		v1.POST("/books", middleware.APIKeyAuth(), jwtAuth, books.CreateBook)
 		v1.GET("/books/:id", middleware.APIKeyAuth(), books.FindBook)
-		v1.PUT("/books/:id", middleware.APIKeyAuth(), middleware.JWTAuth(), books.UpdateBook)
-		v1.PATCH("/books/:id", middleware.APIKeyAuth(), middleware.JWTAuth(), books.PatchBook)
-		v1.DELETE("/books/:id", middleware.APIKeyAuth(), middleware.JWTAuth(), books.DeleteBook)
+		v1.PUT("/books/:id", middleware.APIKeyAuth(), jwtAuth, books.UpdateBook)
+		v1.PATCH("/books/:id", middleware.APIKeyAuth(), jwtAuth, books.PatchBook)
+		v1.DELETE("/books/:id", middleware.APIKeyAuth(), jwtAuth, books.DeleteBook)
 
 		v1.POST("/login", middleware.APIKeyAuth(), users.LoginHandler)
 		v1.POST("/register", middleware.APIKeyAuth(), users.RegisterHandler)
+		v1.POST("/refresh", middleware.APIKeyAuth(), users.RefreshHandler)
+		v1.POST("/logout", middleware.APIKeyAuth(), jwtAuth, users.LogoutHandler)
 
-		admin := v1.Group("/admin", middleware.APIKeyAuth(), middleware.JWTAuth(), middleware.RequireRole(auth.RoleAdmin))
+		admin := v1.Group("/admin", middleware.APIKeyAuth(), jwtAuth, middleware.RequireRole(auth.RoleAdmin))
 		{
 			admin.GET("/me", users.AdminMeHandler)
 		}

@@ -16,7 +16,7 @@ func testRouterRequireRole(t *testing.T, allowed ...string) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.GET("/admin", JWTAuth(), RequireRole(allowed...), func(c *gin.Context) {
+	r.GET("/admin", JWTAuth(auth.NoopDenylist{}), RequireRole(allowed...), func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})
 	return r
