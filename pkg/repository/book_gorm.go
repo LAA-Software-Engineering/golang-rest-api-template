@@ -57,7 +57,38 @@ func (s *GormBookStore) List(q BookListQuery) ([]models.Book, error) {
 	if order != "desc" {
 		order = "asc"
 	}
-	db = db.Order(sortCol + " " + order)
+
+	if order == "desc" {
+		switch sortCol {
+		case "title":
+			db = db.Order("title DESC")
+		case "author":
+			db = db.Order("author DESC")
+		case "created_at":
+			db = db.Order("created_at DESC")
+		case "updated_at":
+			db = db.Order("updated_at DESC")
+		case "owner_id":
+			db = db.Order("owner_id DESC")
+		default:
+			db = db.Order("id DESC")
+		}
+	} else {
+		switch sortCol {
+		case "title":
+			db = db.Order("title ASC")
+		case "author":
+			db = db.Order("author ASC")
+		case "created_at":
+			db = db.Order("created_at ASC")
+		case "updated_at":
+			db = db.Order("updated_at ASC")
+		case "owner_id":
+			db = db.Order("owner_id ASC")
+		default:
+			db = db.Order("id ASC")
+		}
+	}
 
 	var out []models.Book
 	err := db.Offset(q.Offset).Limit(q.Limit).Find(&out).Error
