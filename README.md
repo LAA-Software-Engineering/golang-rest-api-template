@@ -120,7 +120,7 @@ golang-rest-api-template/
 
 ### Prerequisites
 
-- Go 1.25.12 or newer (see `go.mod`; aligns CI and Docker with `govulncheck` / patched stdlib)
+- Go 1.25.13 or newer (see `go.mod`; aligns CI and Docker with `govulncheck` / patched stdlib)
 - Docker
 - Docker Compose
 
