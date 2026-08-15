@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"golang-rest-api-template/pkg/auth"
@@ -55,7 +56,7 @@ func (s *UserService) Login(ctx context.Context, username, password string) (Tok
 	var zero TokenPair
 	dbUser, err := s.users.FindByUsername(username)
 	if err != nil {
-		if repository.IsUserNotFound(err) {
+		if repository.IsNotFound(err) {
 			return zero, ErrInvalidLogin
 		}
 		return zero, fmtError(ErrLoginDB, err)
@@ -67,7 +68,7 @@ func (s *UserService) Login(ctx context.Context, username, password string) (Tok
 }
 
 // Refresh rotates a refresh token and returns a new access + refresh pair.
-// Reuse of a consumed token revokes the entire family.
+// Reuse of a consumed token (or a lost consume race) revokes the entire family.
 func (s *UserService) Refresh(ctx context.Context, refreshPlaintext string) (TokenPair, error) {
 	var zero TokenPair
 	if s.refresh == nil {
@@ -80,7 +81,7 @@ func (s *UserService) Refresh(ctx context.Context, refreshPlaintext string) (Tok
 	hash := auth.HashRefreshToken(refreshPlaintext)
 	row, err := s.refresh.FindByHash(hash)
 	if err != nil {
-		if repository.IsUserNotFound(err) {
+		if repository.IsNotFound(err) {
 			return zero, ErrInvalidRefresh
 		}
 		return zero, fmtError(ErrRefreshPersist, err)
@@ -94,27 +95,64 @@ func (s *UserService) Refresh(ctx context.Context, refreshPlaintext string) (Tok
 		return zero, ErrInvalidRefresh
 	}
 	if row.ConsumedAt != nil {
-		_ = s.refresh.RevokeFamily(row.FamilyID, now)
+		if err := s.refresh.RevokeFamily(row.FamilyID, now); err != nil {
+			return zero, fmtError(ErrRefreshPersist, err)
+		}
 		return zero, ErrRefreshReuse
 	}
 
-	if err := s.refresh.MarkConsumed(row.ID, now); err != nil {
-		return zero, fmtError(ErrRefreshPersist, err)
-	}
-
+	// Resolve user and mint credentials before mutating refresh state so a
+	// failed GenerateToken does not consume the presented token.
 	dbUser, err := s.users.FindByID(row.UserID)
 	if err != nil {
-		if repository.IsUserNotFound(err) {
+		if repository.IsNotFound(err) {
 			return zero, ErrInvalidRefresh
 		}
 		return zero, fmtError(ErrLoginDB, err)
 	}
-	return s.issueTokenPairWithFamily(ctx, dbUser, row.FamilyID)
+	role, err := auth.EffectiveRole(dbUser.Role)
+	if err != nil {
+		return zero, fmtError(ErrTokenGenerate, err)
+	}
+	access, err := auth.GenerateToken(dbUser.Username, dbUser.ID, role)
+	if err != nil {
+		return zero, fmtError(ErrTokenGenerate, err)
+	}
+	plain, err := auth.NewOpaqueToken()
+	if err != nil {
+		return zero, fmtError(ErrTokenGenerate, err)
+	}
+	next := &models.RefreshToken{
+		UserID:    dbUser.ID,
+		TokenHash: auth.HashRefreshToken(plain),
+		FamilyID:  row.FamilyID,
+		ExpiresAt: now.Add(auth.RefreshTokenTTL()),
+	}
+
+	if err := s.refresh.RotateAtomically(row.ID, now, next); err != nil {
+		// Lost race or concurrent use of the same refresh: treat like reuse and
+		// revoke the whole family. That is theft-safe (two parties racing) but a
+		// legitimate double-submit can also kill the winner's new refresh and
+		// force re-login — intentional for this security-first template.
+		if errors.Is(err, repository.ErrRefreshAlreadyConsumed) {
+			if revErr := s.refresh.RevokeFamily(row.FamilyID, now); revErr != nil {
+				return zero, fmtError(ErrRefreshPersist, revErr)
+			}
+			return zero, ErrRefreshReuse
+		}
+		return zero, fmtError(ErrRefreshPersist, err)
+	}
+
+	return TokenPair{
+		AccessToken:  access,
+		RefreshToken: plain,
+		ExpiresIn:    int64(auth.AccessTokenTTL().Seconds()),
+	}, nil
 }
 
 // Logout revokes refresh tokens and optionally denylists the current access jti.
 // If refreshPlaintext is non-empty, only that token's family is revoked; otherwise
-// all refresh tokens for userID are revoked.
+// all refresh tokens for userID are revoked and a per-user revoke_before is set.
 func (s *UserService) Logout(ctx context.Context, userID uint, refreshPlaintext, accessJTI string, accessExp time.Time) error {
 	if s.refresh == nil {
 		return ErrLogoutPersist
@@ -125,7 +163,7 @@ func (s *UserService) Logout(ctx context.Context, userID uint, refreshPlaintext,
 		hash := auth.HashRefreshToken(refreshPlaintext)
 		row, err := s.refresh.FindByHash(hash)
 		if err != nil {
-			if !repository.IsUserNotFound(err) {
+			if !repository.IsNotFound(err) {
 				return fmtError(ErrLogoutPersist, err)
 			}
 			// Unknown refresh: still denylist access token and succeed.
@@ -138,12 +176,14 @@ func (s *UserService) Logout(ctx context.Context, userID uint, refreshPlaintext,
 		if err := s.refresh.RevokeAllForUser(userID, now); err != nil {
 			return fmtError(ErrLogoutPersist, err)
 		}
+		if err := s.denylist.DenyUserBefore(ctx, userID, now); err != nil {
+			log.Printf("service: DenyUserBefore failed (best-effort): user_id=%d: %v", userID, err)
+		}
 	}
 
 	if accessJTI != "" && !accessExp.IsZero() {
 		if err := s.denylist.Deny(ctx, accessJTI, accessExp); err != nil {
-			// Denylist is best-effort; refresh revocation already succeeded.
-			_ = err
+			log.Printf("service: denylist Deny failed (best-effort): jti=%s: %v", accessJTI, err)
 		}
 	}
 	return nil

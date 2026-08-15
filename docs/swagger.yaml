@@ -460,10 +460,15 @@ paths:
     post:
       consumes:
       - application/json
-      description: Revokes refresh token(s) for the authenticated user and denylists
-        the current access JWT when Redis denylist is enabled
+      description: Revokes refresh token(s) for the authenticated user. Empty body
+        revokes all refresh sessions and sets a per-user access-token revoke_before
+        cutoff (when Redis denylist is enabled) so other devices' access JWTs are
+        rejected immediately. When refresh_token is provided, only that token family
+        is revoked. The current access JWT jti is always denylisted when denylist
+        is enabled.
       parameters:
-      - description: Optional refresh token to revoke a single family
+      - description: Optional refresh token to revoke a single family; omit to logout
+          all sessions
         in: body
         name: body
         schema:

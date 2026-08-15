@@ -78,16 +78,28 @@ func (m *memRefreshStore) FindByHash(tokenHash string) (*models.RefreshToken, er
 	return &cp, nil
 }
 
-func (m *memRefreshStore) MarkConsumed(id uint, at time.Time) error {
+func (m *memRefreshStore) RotateAtomically(oldID uint, at time.Time, next *models.RefreshToken) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	var old *models.RefreshToken
 	for _, t := range m.byHash {
-		if t.ID == id {
-			t.ConsumedAt = &at
-			return nil
+		if t.ID == oldID {
+			old = t
+			break
 		}
 	}
-	return gorm.ErrRecordNotFound
+	if old == nil {
+		return gorm.ErrRecordNotFound
+	}
+	if old.ConsumedAt != nil || old.RevokedAt != nil {
+		return repository.ErrRefreshAlreadyConsumed
+	}
+	old.ConsumedAt = &at
+	m.nextID++
+	cp := *next
+	cp.ID = m.nextID
+	m.byHash[cp.TokenHash] = &cp
+	return nil
 }
 
 func (m *memRefreshStore) RevokeFamily(familyID string, at time.Time) error {
@@ -254,6 +266,92 @@ func TestUserServiceRefreshRotationAndReuse(t *testing.T) {
 	assert.ErrorIs(t, err, ErrRefreshReuse)
 }
 
+func TestUserServiceConcurrentRefreshOnlyOneWins(t *testing.T) {
+	prev := auth.JWTSigningKey()
+	t.Cleanup(func() { _ = auth.SetJWTSigningKey(prev) })
+	require.NoError(t, auth.SetJWTSigningKey(bytes.Repeat([]byte("s"), auth.MinJWTSecretKeyBytes)))
+
+	hash, err := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.MinCost)
+	require.NoError(t, err)
+	user := &models.User{ID: 30, Username: "race", Password: string(hash), Role: auth.RoleUser}
+	users := &fakeUserStore{
+		findFn:     func(string) (*models.User, error) { return user, nil },
+		findByIDFn: func(uint) (*models.User, error) { return user, nil },
+	}
+	refresh := newMemRefreshStore()
+	svc := testUserService(users, refresh)
+
+	pair, err := svc.Login(context.Background(), "race", "secret")
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	results := make(chan error, 16)
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := svc.Refresh(context.Background(), pair.RefreshToken)
+			results <- err
+		}()
+	}
+	wg.Wait()
+	close(results)
+
+	var ok, rejected int
+	for err := range results {
+		switch {
+		case err == nil:
+			ok++
+		case errors.Is(err, ErrRefreshReuse), errors.Is(err, ErrInvalidRefresh):
+			// Losers may see AlreadyConsumed (reuse) or RevokedAt after a sibling
+			// RevokeFamily (invalid) depending on scheduling.
+			rejected++
+		default:
+			t.Fatalf("unexpected: %v", err)
+		}
+	}
+	assert.Equal(t, 1, ok)
+	assert.Equal(t, 15, rejected)
+}
+
+type flakyRevokeStore struct {
+	*memRefreshStore
+	revokeErr error
+}
+
+func (f *flakyRevokeStore) RevokeFamily(familyID string, at time.Time) error {
+	if f.revokeErr != nil {
+		return f.revokeErr
+	}
+	return f.memRefreshStore.RevokeFamily(familyID, at)
+}
+
+func TestUserServiceRefreshReusePropagatesRevokeFamilyError(t *testing.T) {
+	prev := auth.JWTSigningKey()
+	t.Cleanup(func() { _ = auth.SetJWTSigningKey(prev) })
+	require.NoError(t, auth.SetJWTSigningKey(bytes.Repeat([]byte("s"), auth.MinJWTSecretKeyBytes)))
+
+	hash, err := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.MinCost)
+	require.NoError(t, err)
+	user := &models.User{ID: 31, Username: "reuse", Password: string(hash), Role: auth.RoleUser}
+	users := &fakeUserStore{
+		findFn:     func(string) (*models.User, error) { return user, nil },
+		findByIDFn: func(uint) (*models.User, error) { return user, nil },
+	}
+	base := newMemRefreshStore()
+	svcOK := testUserService(users, base)
+	pair, err := svcOK.Login(context.Background(), "reuse", "secret")
+	require.NoError(t, err)
+	_, err = svcOK.Refresh(context.Background(), pair.RefreshToken)
+	require.NoError(t, err)
+
+	flaky := &flakyRevokeStore{memRefreshStore: base, revokeErr: errors.New("db down")}
+	svcFlaky := NewUserService(users, flaky, auth.NoopDenylist{})
+	_, err = svcFlaky.Refresh(context.Background(), pair.RefreshToken)
+	assert.ErrorIs(t, err, ErrRefreshPersist)
+	assert.NotErrorIs(t, err, ErrRefreshReuse)
+}
+
 func TestUserServiceLogoutRevokesRefresh(t *testing.T) {
 	prev := auth.JWTSigningKey()
 	t.Cleanup(func() { _ = auth.SetJWTSigningKey(prev) })
@@ -280,6 +378,74 @@ func TestUserServiceLogoutRevokesRefresh(t *testing.T) {
 	require.NoError(t, svc.Logout(context.Background(), user.ID, "", "jti-1", time.Now().Add(time.Minute)))
 	_, err = svc.Refresh(context.Background(), pair.RefreshToken)
 	assert.ErrorIs(t, err, ErrInvalidRefresh)
+}
+
+type recordingDenylist struct {
+	auth.NoopDenylist
+	denyUserCalls int
+	denyJTICalls  int
+	lastUserID    uint
+}
+
+func (r *recordingDenylist) Deny(ctx context.Context, jti string, until time.Time) error {
+	r.denyJTICalls++
+	return nil
+}
+
+func (r *recordingDenylist) DenyUserBefore(ctx context.Context, userID uint, before time.Time) error {
+	r.denyUserCalls++
+	r.lastUserID = userID
+	return nil
+}
+
+func TestUserServiceLogoutAllCallsDenyUserBefore(t *testing.T) {
+	prev := auth.JWTSigningKey()
+	t.Cleanup(func() { _ = auth.SetJWTSigningKey(prev) })
+	require.NoError(t, auth.SetJWTSigningKey(bytes.Repeat([]byte("s"), auth.MinJWTSecretKeyBytes)))
+
+	hash, err := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.MinCost)
+	require.NoError(t, err)
+	user := &models.User{ID: 21, Username: "all", Password: string(hash), Role: auth.RoleUser}
+	users := &fakeUserStore{
+		findFn:     func(string) (*models.User, error) { return user, nil },
+		findByIDFn: func(id uint) (*models.User, error) { return user, nil },
+	}
+	dl := &recordingDenylist{}
+	svc := NewUserService(users, newMemRefreshStore(), dl)
+
+	pair, err := svc.Login(context.Background(), "all", "secret")
+	require.NoError(t, err)
+
+	require.NoError(t, svc.Logout(context.Background(), user.ID, "", "jti-x", time.Now().Add(time.Minute)))
+	assert.Equal(t, 1, dl.denyUserCalls)
+	assert.Equal(t, user.ID, dl.lastUserID)
+	assert.Equal(t, 1, dl.denyJTICalls)
+
+	_, err = svc.Refresh(context.Background(), pair.RefreshToken)
+	assert.ErrorIs(t, err, ErrInvalidRefresh)
+}
+
+func TestUserServiceLogoutFamilySkipsDenyUserBefore(t *testing.T) {
+	prev := auth.JWTSigningKey()
+	t.Cleanup(func() { _ = auth.SetJWTSigningKey(prev) })
+	require.NoError(t, auth.SetJWTSigningKey(bytes.Repeat([]byte("s"), auth.MinJWTSecretKeyBytes)))
+
+	hash, err := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.MinCost)
+	require.NoError(t, err)
+	user := &models.User{ID: 22, Username: "one", Password: string(hash), Role: auth.RoleUser}
+	users := &fakeUserStore{
+		findFn:     func(string) (*models.User, error) { return user, nil },
+		findByIDFn: func(id uint) (*models.User, error) { return user, nil },
+	}
+	dl := &recordingDenylist{}
+	svc := NewUserService(users, newMemRefreshStore(), dl)
+
+	pair, err := svc.Login(context.Background(), "one", "secret")
+	require.NoError(t, err)
+
+	require.NoError(t, svc.Logout(context.Background(), user.ID, pair.RefreshToken, "jti-y", time.Now().Add(time.Minute)))
+	assert.Equal(t, 0, dl.denyUserCalls)
+	assert.Equal(t, 1, dl.denyJTICalls)
 }
 
 func TestUserServiceRegisterSetsUserRole(t *testing.T) {

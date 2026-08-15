@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"time"
 
@@ -118,25 +119,23 @@ func (h *userHandler) RefreshHandler(c *gin.Context) {
 // LogoutHandler godoc
 // @Summary Log out and revoke tokens
 // @Schemes
-// @Description Revokes refresh token(s) for the authenticated user and denylists the current access JWT when Redis denylist is enabled
+// @Description Revokes refresh token(s) for the authenticated user. Empty body revokes all refresh sessions and sets a per-user access-token revoke_before cutoff (when Redis denylist is enabled) so other devices' access JWTs are rejected immediately. When refresh_token is provided, only that token family is revoked. The current access JWT jti is always denylisted when denylist is enabled.
 // @Tags user
 // @Security ApiKeyAuth
 // @Security JwtAuth
 // @Accept  json
 // @Produce  json
-// @Param   body  body  models.LogoutRequest  false  "Optional refresh token to revoke a single family"
+// @Param   body  body  models.LogoutRequest  false  "Optional refresh token to revoke a single family; omit to logout all sessions"
 // @Success 200 {object} models.LogoutAPIResponse "Logout confirmation"
 // @Failure 401 {string} string "Unauthorized"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /logout [post]
 func (h *userHandler) LogoutHandler(c *gin.Context) {
 	var incoming models.LogoutRequest
-	// Empty body is allowed; bind errors only when body is present but invalid JSON.
-	if c.Request.ContentLength != 0 {
-		if err := c.ShouldBindJSON(&incoming); err != nil {
-			httperr.Write(c, http.StatusBadRequest, err.Error())
-			return
-		}
+	// Empty body is allowed (logout-all). Gin returns io.EOF for empty JSON body.
+	if err := c.ShouldBindJSON(&incoming); err != nil && !errors.Is(err, io.EOF) {
+		httperr.Write(c, http.StatusBadRequest, err.Error())
+		return
 	}
 
 	userID, _ := c.Get(middleware.ContextUserID)
