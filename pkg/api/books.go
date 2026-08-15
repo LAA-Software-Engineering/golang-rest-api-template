@@ -22,6 +22,10 @@ const (
 	findBooksMaxLimit = 100
 )
 
+var bookListSortAllowlist = map[string]struct{}{
+	"id": {}, "title": {}, "author": {}, "created_at": {}, "updated_at": {}, "owner_id": {},
+}
+
 // BookHandler defines Gin handlers for book routes (HTTP layer only; persistence
 // lives in pkg/repository).
 type BookHandler interface {
@@ -84,6 +88,45 @@ func parseOffsetLimit(c *gin.Context) (offset, limit int, ok bool) {
 	return o, l, true
 }
 
+// parseBookListQuery parses pagination, filter, and sort query params for GET /books.
+func parseBookListQuery(c *gin.Context) (repository.BookListQuery, bool) {
+	var q repository.BookListQuery
+	offset, limit, ok := parseOffsetLimit(c)
+	if !ok {
+		return q, false
+	}
+	q.Offset = offset
+	q.Limit = limit
+	q.TitleLike = strings.TrimSpace(c.Query("title_like"))
+	q.AuthorLike = strings.TrimSpace(c.Query("author_like"))
+
+	ownerRaw := strings.TrimSpace(c.Query("owner_id"))
+	if ownerRaw != "" {
+		id, err := strconv.ParseUint(ownerRaw, 10, strconv.IntSize)
+		if err != nil {
+			httperr.Write(c, http.StatusBadRequest, "Invalid owner_id format")
+			return q, false
+		}
+		ownerID := uint(id)
+		q.OwnerID = &ownerID
+	}
+
+	sort := strings.TrimSpace(c.DefaultQuery("sort", "id"))
+	if _, allowed := bookListSortAllowlist[sort]; !allowed {
+		httperr.Write(c, http.StatusBadRequest, "Invalid sort field")
+		return q, false
+	}
+	q.Sort = sort
+
+	order := strings.ToLower(strings.TrimSpace(c.DefaultQuery("order", "asc")))
+	if order != "asc" && order != "desc" {
+		httperr.Write(c, http.StatusBadRequest, "Invalid order; must be asc or desc")
+		return q, false
+	}
+	q.Order = order
+	return q, true
+}
+
 // contextUserID returns the authenticated users.id set by middleware.JWTAuth.
 func contextUserID(c *gin.Context) (uint, bool) {
 	if c == nil {
@@ -113,23 +156,28 @@ func (h *bookHandler) Healthcheck(c *gin.Context) {
 }
 
 // FindBooks godoc
-// @Summary Get all books with pagination
-// @Description Get a list of all books with optional pagination. List entries are keyed by a monotonic cache generation (no Redis KEYS) and canonical integer offset/limit after parsing (leading zeros and surrounding whitespace in query params do not fragment the cache). Concurrent cache misses for the same offset/limit and generation are coalesced (singleflight) so only one database read and Redis write runs per cache key.
+// @Summary Get all books with pagination, filter, and sort
+// @Description Get a list of books with optional pagination (offset/limit), filters (title_like, author_like, owner_id), and sort (sort/order). List entries are keyed by a monotonic cache generation (no Redis KEYS) and a canonical query after parsing (leading zeros and surrounding whitespace in query params do not fragment the cache). Concurrent cache misses for the same query and generation are coalesced (singleflight) so only one database read and Redis write runs per cache key.
 // @Tags books
 // @Security ApiKeyAuth
 // @Produce json
 // @Param offset query int false "Offset for pagination (must be >= 0)" default(0)
 // @Param limit query int false "Limit for pagination (minimum 1, capped at 100)" default(10)
+// @Param title_like query string false "Case-insensitive substring filter on title"
+// @Param author_like query string false "Case-insensitive substring filter on author"
+// @Param owner_id query int false "Exact match filter on owner_id"
+// @Param sort query string false "Sort field (id, title, author, created_at, updated_at, owner_id)" default(id) Enums(id, title, author, created_at, updated_at, owner_id)
+// @Param order query string false "Sort direction" default(asc) Enums(asc, desc)
 // @Success 200 {array} models.Book "Successfully retrieved list of books"
 // @Failure 400 {string} string "Bad Request"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /books [get]
 func (h *bookHandler) FindBooks(c *gin.Context) {
-	offset, limit, ok := parseOffsetLimit(c)
+	q, ok := parseBookListQuery(c)
 	if !ok {
 		return
 	}
-	books, err := h.svc.ListBooks(c.Request.Context(), offset, limit)
+	books, err := h.svc.ListBooks(c.Request.Context(), q)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrListBooksDB):

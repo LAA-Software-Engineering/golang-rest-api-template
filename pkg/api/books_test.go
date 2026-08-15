@@ -38,6 +38,10 @@ func withBookActor(userID uint) gin.HandlerFunc {
 	}
 }
 
+func defaultBookListQuery(offset, limit int) repository.BookListQuery {
+	return repository.BookListQuery{Offset: offset, Limit: limit, Sort: "id", Order: "asc"}
+}
+
 func TestNewBookHandler(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -185,9 +189,9 @@ func TestFindBooksLimitCappedAtMax(t *testing.T) {
 
 	gomock.InOrder(
 		mockCache.EXPECT().Get(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewStringResult("", redis.Nil)),
-		mockCache.EXPECT().Get(gomock.Any(), service.BooksListDataCacheKey(0, 0, findBooksMaxLimit)).Return(redis.NewStringResult("", redis.Nil)),
+		mockCache.EXPECT().Get(gomock.Any(), service.BooksListDataCacheKey(0, defaultBookListQuery(0, findBooksMaxLimit))).Return(redis.NewStringResult("", redis.Nil)),
 	)
-	mockCache.EXPECT().Set(gomock.Any(), service.BooksListDataCacheKey(0, 0, findBooksMaxLimit), gomock.Any(), time.Minute).Return(redis.NewStatusResult("OK", nil)).Times(1)
+	mockCache.EXPECT().Set(gomock.Any(), service.BooksListDataCacheKey(0, defaultBookListQuery(0, findBooksMaxLimit)), gomock.Any(), time.Minute).Return(redis.NewStatusResult("OK", nil)).Times(1)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -491,7 +495,7 @@ func TestFindBooksDatabaseError(t *testing.T) {
 
 	gomock.InOrder(
 		mockCache.EXPECT().Get(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewStringResult("", redis.Nil)),
-		mockCache.EXPECT().Get(gomock.Any(), service.BooksListDataCacheKey(0, 0, 10)).Return(redis.NewStringResult("", redis.Nil)),
+		mockCache.EXPECT().Get(gomock.Any(), service.BooksListDataCacheKey(0, defaultBookListQuery(0, 10))).Return(redis.NewStringResult("", redis.Nil)),
 	)
 
 	w := httptest.NewRecorder()
@@ -673,9 +677,9 @@ func TestFindBooks(t *testing.T) {
 
 	gomock.InOrder(
 		mockCache.EXPECT().Get(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewStringResult("0", nil)),
-		mockCache.EXPECT().Get(gomock.Any(), service.BooksListDataCacheKey(0, 0, 10)).Return(redis.NewStringResult("", redis.Nil)),
+		mockCache.EXPECT().Get(gomock.Any(), service.BooksListDataCacheKey(0, defaultBookListQuery(0, 10))).Return(redis.NewStringResult("", redis.Nil)),
 	)
-	mockCache.EXPECT().Set(gomock.Any(), service.BooksListDataCacheKey(0, 0, 10), gomock.Any(), time.Minute).Return(redis.NewStatusResult("OK", nil)).Times(1)
+	mockCache.EXPECT().Set(gomock.Any(), service.BooksListDataCacheKey(0, defaultBookListQuery(0, 10)), gomock.Any(), time.Minute).Return(redis.NewStatusResult("OK", nil)).Times(1)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -883,7 +887,7 @@ func TestFindBooksSingleflightCoalescesDB(t *testing.T) {
 	h := NewBookHandler(repository.NewGormBookStore(db), mockCache)
 
 	const n = 50
-	dataKey := service.BooksListDataCacheKey(0, 0, 10)
+	dataKey := service.BooksListDataCacheKey(0, defaultBookListQuery(0, 10))
 	var cacheMu sync.Mutex
 	var cachedPayload string
 	mockCache.EXPECT().Get(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, key string) *redis.StringCmd {
@@ -976,7 +980,7 @@ func TestFindBooksLeadingZerosShareListCache(t *testing.T) {
 	mockCache := cache.NewMockCache(ctrl)
 	h := NewBookHandler(repository.NewGormBookStore(db), mockCache)
 
-	dataKey := service.BooksListDataCacheKey(0, 0, 10)
+	dataKey := service.BooksListDataCacheKey(0, defaultBookListQuery(0, 10))
 	var cacheMu sync.Mutex
 	var cachedPayload string
 	mockCache.EXPECT().Get(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, key string) *redis.StringCmd {
@@ -1029,5 +1033,145 @@ func TestFindBooksLeadingZerosShareListCache(t *testing.T) {
 
 	if got := queryN.Load(); got != 1 {
 		t.Fatalf("expected one DB list query (second HTTP call hits same cache key), got %d", got)
+	}
+}
+
+func TestFindBooksInvalidSort(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	h := NewBookHandler(repository.NewMockBookPersistence(ctrl), cache.NewMockCache(ctrl))
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.GET("/books", h.FindBooks)
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/books?sort=password", nil))
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "Invalid sort field")
+}
+
+func TestFindBooksInvalidOrder(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	h := NewBookHandler(repository.NewMockBookPersistence(ctrl), cache.NewMockCache(ctrl))
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.GET("/books", h.FindBooks)
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/books?order=sideways", nil))
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "Invalid order")
+}
+
+func TestFindBooksInvalidOwnerID(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	h := NewBookHandler(repository.NewMockBookPersistence(ctrl), cache.NewMockCache(ctrl))
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.GET("/books", h.FindBooks)
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/books?owner_id=abc", nil))
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "Invalid owner_id format")
+}
+
+func TestFindBooksFiltersAndSort(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockCache := cache.NewMockCache(ctrl)
+
+	dbPath := filepath.Join(t.TempDir(), "findbooks_filter.sqlite")
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	assert.NoError(t, err)
+	assert.NoError(t, db.AutoMigrate(&models.Book{}))
+	store := repository.NewGormBookStore(db)
+	assert.NoError(t, store.Create(&models.Book{OwnerID: 1, Title: "Go in Action", Author: "Kennedy"}))
+	assert.NoError(t, store.Create(&models.Book{OwnerID: 1, Title: "Rust Book", Author: "Matsakis"}))
+	assert.NoError(t, store.Create(&models.Book{OwnerID: 2, Title: "Go Patterns", Author: "Kennedy"}))
+
+	q := repository.BookListQuery{
+		Offset: 0, Limit: 10, TitleLike: "go", AuthorLike: "kennedy",
+		Sort: "title", Order: "asc",
+	}
+	owner := uint(1)
+	q.OwnerID = &owner
+	dataKey := service.BooksListDataCacheKey(0, q)
+
+	gomock.InOrder(
+		mockCache.EXPECT().Get(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewStringResult("", redis.Nil)),
+		mockCache.EXPECT().Get(gomock.Any(), dataKey).Return(redis.NewStringResult("", redis.Nil)),
+	)
+	mockCache.EXPECT().Set(gomock.Any(), dataKey, gomock.Any(), time.Minute).Return(redis.NewStatusResult("OK", nil)).Times(1)
+
+	h := NewBookHandler(store, mockCache)
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.GET("/books", h.FindBooks)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/books?title_like=go&author_like=kennedy&owner_id=1&sort=title&order=asc", nil)
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var envelope struct {
+		Data []models.Book `json:"data"`
+	}
+	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &envelope))
+	if assert.Len(t, envelope.Data, 1) {
+		assert.Equal(t, "Go in Action", envelope.Data[0].Title)
+	}
+}
+
+func TestFindBooksFilterCacheIsolation(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockCache := cache.NewMockCache(ctrl)
+
+	dbPath := filepath.Join(t.TempDir(), "findbooks_cache_iso.sqlite")
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	assert.NoError(t, err)
+	assert.NoError(t, db.AutoMigrate(&models.Book{}))
+	store := repository.NewGormBookStore(db)
+	assert.NoError(t, store.Create(&models.Book{OwnerID: 1, Title: "Alpha", Author: "a"}))
+	assert.NoError(t, store.Create(&models.Book{OwnerID: 1, Title: "Beta", Author: "b"}))
+
+	qGo := defaultBookListQuery(0, 10)
+	qGo.TitleLike = "alpha"
+	qRust := defaultBookListQuery(0, 10)
+	qRust.TitleLike = "beta"
+	keyGo := service.BooksListDataCacheKey(0, qGo)
+	keyRust := service.BooksListDataCacheKey(0, qRust)
+	assert.NotEqual(t, keyGo, keyRust)
+
+	payload, err := json.Marshal([]models.Book{{Title: "Alpha", Author: "a", OwnerID: 1}})
+	assert.NoError(t, err)
+
+	mockCache.EXPECT().Get(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewStringResult("", redis.Nil)).Times(2)
+	mockCache.EXPECT().Get(gomock.Any(), keyGo).Return(redis.NewStringResult(string(payload), nil))
+	mockCache.EXPECT().Get(gomock.Any(), keyRust).Return(redis.NewStringResult("", redis.Nil))
+	mockCache.EXPECT().Set(gomock.Any(), keyRust, gomock.Any(), time.Minute).Return(redis.NewStatusResult("OK", nil))
+
+	h := NewBookHandler(store, mockCache)
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.GET("/books", h.FindBooks)
+
+	w1 := httptest.NewRecorder()
+	r.ServeHTTP(w1, httptest.NewRequest(http.MethodGet, "/books?title_like=alpha", nil))
+	assert.Equal(t, http.StatusOK, w1.Code)
+
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, httptest.NewRequest(http.MethodGet, "/books?title_like=beta", nil))
+	assert.Equal(t, http.StatusOK, w2.Code)
+
+	var env2 struct {
+		Data []models.Book `json:"data"`
+	}
+	assert.NoError(t, json.Unmarshal(w2.Body.Bytes(), &env2))
+	if assert.Len(t, env2.Data, 1) {
+		assert.Equal(t, "Beta", env2.Data[0].Title)
 	}
 }

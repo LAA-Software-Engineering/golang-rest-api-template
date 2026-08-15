@@ -185,12 +185,13 @@ paths:
       - admin
   /books:
     get:
-      description: Get a list of all books with optional pagination. List entries
-        are keyed by a monotonic cache generation (no Redis KEYS) and canonical integer
-        offset/limit after parsing (leading zeros and surrounding whitespace in query
-        params do not fragment the cache). Concurrent cache misses for the same offset/limit
-        and generation are coalesced (singleflight) so only one database read and
-        Redis write runs per cache key.
+      description: Get a list of books with optional pagination (offset/limit), filters
+        (title_like, author_like, owner_id), and sort (sort/order). List entries are
+        keyed by a monotonic cache generation (no Redis KEYS) and a canonical query
+        after parsing (leading zeros and surrounding whitespace in query params do
+        not fragment the cache). Concurrent cache misses for the same query and generation
+        are coalesced (singleflight) so only one database read and Redis write runs
+        per cache key.
       parameters:
       - default: 0
         description: Offset for pagination (must be >= 0)
@@ -202,6 +203,38 @@ paths:
         in: query
         name: limit
         type: integer
+      - description: Case-insensitive substring filter on title
+        in: query
+        name: title_like
+        type: string
+      - description: Case-insensitive substring filter on author
+        in: query
+        name: author_like
+        type: string
+      - description: Exact match filter on owner_id
+        in: query
+        name: owner_id
+        type: integer
+      - default: id
+        description: Sort field (id, title, author, created_at, updated_at, owner_id)
+        enum:
+        - id
+        - title
+        - author
+        - created_at
+        - updated_at
+        - owner_id
+        in: query
+        name: sort
+        type: string
+      - default: asc
+        description: Sort direction
+        enum:
+        - asc
+        - desc
+        in: query
+        name: order
+        type: string
       produces:
       - application/json
       responses:
@@ -221,7 +254,7 @@ paths:
             type: string
       security:
       - ApiKeyAuth: []
-      summary: Get all books with pagination
+      summary: Get all books with pagination, filter, and sort
       tags:
       - books
     post:

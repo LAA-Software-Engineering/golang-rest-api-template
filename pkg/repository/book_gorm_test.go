@@ -13,7 +13,9 @@ import (
 
 func testBookDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	// Unique DSN per test so shared-cache in-memory DBs do not leak rows across tests.
+	dsn := "file:" + t.Name() + "?mode=memory&cache=shared"
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if !assert.NoError(t, err) {
 		t.FailNow()
 	}
@@ -30,7 +32,7 @@ func TestGormBookStoreListCreateFirstByID(t *testing.T) {
 	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "A", Author: "1"}))
 	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "B", Author: "2"}))
 
-	list, err := s.List(0, 10)
+	list, err := s.List(BookListQuery{Offset: 0, Limit: 10})
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -61,11 +63,130 @@ func TestGormBookStoreListOffsetLimit(t *testing.T) {
 		assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: string(rune('A' + i)), Author: "x"}))
 	}
 
-	page, err := s.List(1, 2)
+	page, err := s.List(BookListQuery{Offset: 1, Limit: 2})
 	if !assert.NoError(t, err) {
 		return
 	}
 	assert.Len(t, page, 2)
+}
+
+func TestGormBookStoreListTitleLike(t *testing.T) {
+	db := testBookDB(t)
+	s := NewGormBookStore(db)
+	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "The Go Programming Language", Author: "Donovan"}))
+	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Clean Code", Author: "Martin"}))
+
+	list, err := s.List(BookListQuery{Offset: 0, Limit: 10, TitleLike: "go"})
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.Len(t, list, 1) {
+		return
+	}
+	assert.Equal(t, "The Go Programming Language", list[0].Title)
+}
+
+func TestGormBookStoreListAuthorLike(t *testing.T) {
+	db := testBookDB(t)
+	s := NewGormBookStore(db)
+	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "A", Author: "Alice Smith"}))
+	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "B", Author: "Bob Jones"}))
+
+	list, err := s.List(BookListQuery{Offset: 0, Limit: 10, AuthorLike: "smith"})
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.Len(t, list, 1) {
+		return
+	}
+	assert.Equal(t, "Alice Smith", list[0].Author)
+}
+
+func TestGormBookStoreListOwnerID(t *testing.T) {
+	db := testBookDB(t)
+	s := NewGormBookStore(db)
+	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "A", Author: "x"}))
+	assert.NoError(t, s.Create(&models.Book{OwnerID: 2, Title: "B", Author: "y"}))
+
+	owner := uint(2)
+	list, err := s.List(BookListQuery{Offset: 0, Limit: 10, OwnerID: &owner})
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.Len(t, list, 1) {
+		return
+	}
+	assert.Equal(t, uint(2), list[0].OwnerID)
+}
+
+func TestGormBookStoreListSortDesc(t *testing.T) {
+	db := testBookDB(t)
+	s := NewGormBookStore(db)
+	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Alpha", Author: "z"}))
+	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Beta", Author: "a"}))
+
+	list, err := s.List(BookListQuery{Offset: 0, Limit: 10, Sort: "title", Order: "desc"})
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.Len(t, list, 2) {
+		return
+	}
+	assert.Equal(t, "Beta", list[0].Title)
+	assert.Equal(t, "Alpha", list[1].Title)
+}
+
+func TestGormBookStoreListCombinedFiltersAndPagination(t *testing.T) {
+	db := testBookDB(t)
+	s := NewGormBookStore(db)
+	owner := uint(1)
+	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Go Basics", Author: "Ann"}))
+	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Go Advanced", Author: "Ann"}))
+	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Go Expert", Author: "Ann"}))
+	assert.NoError(t, s.Create(&models.Book{OwnerID: 2, Title: "Go Other", Author: "Ann"}))
+	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Rust", Author: "Ann"}))
+
+	list, err := s.List(BookListQuery{
+		Offset:    1,
+		Limit:     1,
+		TitleLike: "go",
+		OwnerID:   &owner,
+		Sort:      "title",
+		Order:     "asc",
+	})
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.Len(t, list, 1) {
+		return
+	}
+	assert.Equal(t, "Go Basics", list[0].Title)
+}
+
+func TestGormBookStoreListLikeMetacharactersLiteral(t *testing.T) {
+	db := testBookDB(t)
+	s := NewGormBookStore(db)
+	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "100% Pure", Author: "x"}))
+	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "100 Pure", Author: "x"}))
+	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "under_score", Author: "y"}))
+
+	list, err := s.List(BookListQuery{Offset: 0, Limit: 10, TitleLike: "100%"})
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.Len(t, list, 1) {
+		return
+	}
+	assert.Equal(t, "100% Pure", list[0].Title)
+
+	list, err = s.List(BookListQuery{Offset: 0, Limit: 10, TitleLike: "under_"})
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.Len(t, list, 1) {
+		return
+	}
+	assert.Equal(t, "under_score", list[0].Title)
 }
 
 func TestGormBookStoreUpdateFields(t *testing.T) {
@@ -162,7 +283,7 @@ func TestGormBookStoreListConcurrent(t *testing.T) {
 	for i := 0; i < n; i++ {
 		go func() {
 			defer wg.Done()
-			_, err := s.List(0, 10)
+			_, err := s.List(BookListQuery{Offset: 0, Limit: 10})
 			assert.NoError(t, err)
 		}()
 	}

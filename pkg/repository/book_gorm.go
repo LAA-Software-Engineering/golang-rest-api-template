@@ -2,11 +2,22 @@ package repository
 
 import (
 	"errors"
+	"strings"
 
 	"golang-rest-api-template/pkg/models"
 
 	"gorm.io/gorm"
 )
+
+// Allowed book list sort columns (API query values map 1:1 to these identifiers).
+var bookListSortColumns = map[string]string{
+	"id":         "id",
+	"title":      "title",
+	"author":     "author",
+	"created_at": "created_at",
+	"updated_at": "updated_at",
+	"owner_id":   "owner_id",
+}
 
 // GormBookStore implements BookPersistence using GORM.
 type GormBookStore struct {
@@ -18,9 +29,38 @@ func NewGormBookStore(db *gorm.DB) *GormBookStore {
 	return &GormBookStore{db: db}
 }
 
-func (s *GormBookStore) List(offset, limit int) ([]models.Book, error) {
+func escapeLikePattern(s string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return replacer.Replace(s)
+}
+
+func (s *GormBookStore) List(q BookListQuery) ([]models.Book, error) {
+	db := s.db.Model(&models.Book{})
+
+	if q.TitleLike != "" {
+		pattern := "%" + strings.ToLower(escapeLikePattern(q.TitleLike)) + "%"
+		db = db.Where("LOWER(title) LIKE ? ESCAPE '\\'", pattern)
+	}
+	if q.AuthorLike != "" {
+		pattern := "%" + strings.ToLower(escapeLikePattern(q.AuthorLike)) + "%"
+		db = db.Where("LOWER(author) LIKE ? ESCAPE '\\'", pattern)
+	}
+	if q.OwnerID != nil {
+		db = db.Where("owner_id = ?", *q.OwnerID)
+	}
+
+	sortCol := bookListSortColumns[q.Sort]
+	if sortCol == "" {
+		sortCol = "id"
+	}
+	order := strings.ToLower(strings.TrimSpace(q.Order))
+	if order != "desc" {
+		order = "asc"
+	}
+	db = db.Order(sortCol + " " + order)
+
 	var out []models.Book
-	err := s.db.Offset(offset).Limit(limit).Find(&out).Error
+	err := db.Offset(q.Offset).Limit(q.Limit).Find(&out).Error
 	return out, err
 }
 
