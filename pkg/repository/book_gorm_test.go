@@ -189,6 +189,35 @@ func TestGormBookStoreListLikeMetacharactersLiteral(t *testing.T) {
 	assert.Equal(t, "under_score", list[0].Title)
 }
 
+func TestGormBookStoreListStablePaginationOnTiedTitle(t *testing.T) {
+	db := testBookDB(t)
+	s := NewGormBookStore(db)
+	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Same", Author: "a"}))
+	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Same", Author: "b"}))
+	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Same", Author: "c"}))
+
+	page1, err := s.List(BookListQuery{Offset: 0, Limit: 2, Sort: "title", Order: "asc"})
+	if !assert.NoError(t, err) {
+		return
+	}
+	page2, err := s.List(BookListQuery{Offset: 2, Limit: 2, Sort: "title", Order: "asc"})
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.Len(t, page1, 2) || !assert.Len(t, page2, 1) {
+		return
+	}
+	seen := map[uint]struct{}{}
+	for _, b := range append(page1, page2...) {
+		if _, ok := seen[b.ID]; ok {
+			t.Fatalf("duplicate id %d across pages", b.ID)
+		}
+		seen[b.ID] = struct{}{}
+	}
+	assert.True(t, page1[0].ID < page1[1].ID, "tie-breaker should order by id ASC")
+	assert.True(t, page1[1].ID < page2[0].ID)
+}
+
 func TestGormBookStoreUpdateFields(t *testing.T) {
 	db := testBookDB(t)
 	s := NewGormBookStore(db)

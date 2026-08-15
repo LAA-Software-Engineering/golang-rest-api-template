@@ -9,14 +9,25 @@ import (
 	"gorm.io/gorm"
 )
 
-// Allowed book list sort columns (API query values map 1:1 to these identifiers).
-var bookListSortColumns = map[string]string{
-	"id":         "id",
-	"title":      "title",
-	"author":     "author",
-	"created_at": "created_at",
-	"updated_at": "updated_at",
-	"owner_id":   "owner_id",
+// BookListSortFields is the allowlisted set of sort query values for listing books.
+var BookListSortFields = map[string]struct{}{
+	"id": {}, "title": {}, "author": {}, "created_at": {}, "updated_at": {}, "owner_id": {},
+}
+
+// Static ORDER BY clauses keyed by "field|asc" / "field|desc" (no user-string concat).
+var bookListOrderBy = map[string]string{
+	"id|asc":          "id ASC",
+	"id|desc":         "id DESC",
+	"title|asc":       "title ASC",
+	"title|desc":      "title DESC",
+	"author|asc":      "author ASC",
+	"author|desc":     "author DESC",
+	"created_at|asc":  "created_at ASC",
+	"created_at|desc": "created_at DESC",
+	"updated_at|asc":  "updated_at ASC",
+	"updated_at|desc": "updated_at DESC",
+	"owner_id|asc":    "owner_id ASC",
+	"owner_id|desc":   "owner_id DESC",
 }
 
 // GormBookStore implements BookPersistence using GORM.
@@ -49,45 +60,22 @@ func (s *GormBookStore) List(q BookListQuery) ([]models.Book, error) {
 		db = db.Where("owner_id = ?", *q.OwnerID)
 	}
 
-	sortCol := bookListSortColumns[q.Sort]
-	if sortCol == "" {
-		sortCol = "id"
+	sort := strings.ToLower(strings.TrimSpace(q.Sort))
+	if _, ok := BookListSortFields[sort]; !ok {
+		sort = "id"
 	}
 	order := strings.ToLower(strings.TrimSpace(q.Order))
 	if order != "desc" {
 		order = "asc"
 	}
-
-	if order == "desc" {
-		switch sortCol {
-		case "title":
-			db = db.Order("title DESC")
-		case "author":
-			db = db.Order("author DESC")
-		case "created_at":
-			db = db.Order("created_at DESC")
-		case "updated_at":
-			db = db.Order("updated_at DESC")
-		case "owner_id":
-			db = db.Order("owner_id DESC")
-		default:
-			db = db.Order("id DESC")
-		}
-	} else {
-		switch sortCol {
-		case "title":
-			db = db.Order("title ASC")
-		case "author":
-			db = db.Order("author ASC")
-		case "created_at":
-			db = db.Order("created_at ASC")
-		case "updated_at":
-			db = db.Order("updated_at ASC")
-		case "owner_id":
-			db = db.Order("owner_id ASC")
-		default:
-			db = db.Order("id ASC")
-		}
+	clause := bookListOrderBy[sort+"|"+order]
+	if clause == "" {
+		clause = "id ASC"
+	}
+	db = db.Order(clause)
+	// Stable pagination when the primary column has ties.
+	if sort != "id" {
+		db = db.Order("id ASC")
 	}
 
 	var out []models.Book

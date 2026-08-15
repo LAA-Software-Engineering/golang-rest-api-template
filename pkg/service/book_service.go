@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,7 +28,8 @@ var (
 )
 
 // BooksListDataCacheKey is the Redis key for a cached books list page (tests and docs).
-// All filter/sort fields are embedded so distinct queries never share a cache entry.
+// Free-form filter strings are hex-encoded so delimiter substrings cannot collide
+// distinct queries onto the same key (or singleflight key).
 func BooksListDataCacheKey(gen int64, q repository.BookListQuery) string {
 	owner := "_"
 	if q.OwnerID != nil {
@@ -35,7 +37,10 @@ func BooksListDataCacheKey(gen int64, q repository.BookListQuery) string {
 	}
 	return fmt.Sprintf(
 		"books_g%d_offset_%d_limit_%d_title_%s_author_%s_owner_%s_sort_%s_order_%s",
-		gen, q.Offset, q.Limit, q.TitleLike, q.AuthorLike, owner, q.Sort, q.Order,
+		gen, q.Offset, q.Limit,
+		hex.EncodeToString([]byte(q.TitleLike)),
+		hex.EncodeToString([]byte(q.AuthorLike)),
+		owner, q.Sort, q.Order,
 	)
 }
 

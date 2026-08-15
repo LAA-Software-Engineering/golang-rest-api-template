@@ -1050,6 +1050,37 @@ func TestFindBooksInvalidSort(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "Invalid sort field")
 }
 
+func TestFindBooksSortCaseInsensitive(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockCache := cache.NewMockCache(ctrl)
+
+	dbPath := filepath.Join(t.TempDir(), "findbooks_sort_case.sqlite")
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	assert.NoError(t, err)
+	assert.NoError(t, db.AutoMigrate(&models.Book{}))
+	store := repository.NewGormBookStore(db)
+	assert.NoError(t, store.Create(&models.Book{OwnerID: 1, Title: "A", Author: "x"}))
+
+	q := defaultBookListQuery(0, 10)
+	q.Sort = "title"
+	dataKey := service.BooksListDataCacheKey(0, q)
+	gomock.InOrder(
+		mockCache.EXPECT().Get(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewStringResult("", redis.Nil)),
+		mockCache.EXPECT().Get(gomock.Any(), dataKey).Return(redis.NewStringResult("", redis.Nil)),
+	)
+	mockCache.EXPECT().Set(gomock.Any(), dataKey, gomock.Any(), time.Minute).Return(redis.NewStatusResult("OK", nil))
+
+	h := NewBookHandler(store, mockCache)
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.GET("/books", h.FindBooks)
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/books?sort=Title", nil))
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
 func TestFindBooksInvalidOrder(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

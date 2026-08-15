@@ -22,10 +22,6 @@ const (
 	findBooksMaxLimit = 100
 )
 
-var bookListSortAllowlist = map[string]struct{}{
-	"id": {}, "title": {}, "author": {}, "created_at": {}, "updated_at": {}, "owner_id": {},
-}
-
 // BookHandler defines Gin handlers for book routes (HTTP layer only; persistence
 // lives in pkg/repository).
 type BookHandler interface {
@@ -111,8 +107,8 @@ func parseBookListQuery(c *gin.Context) (repository.BookListQuery, bool) {
 		q.OwnerID = &ownerID
 	}
 
-	sort := strings.TrimSpace(c.DefaultQuery("sort", "id"))
-	if _, allowed := bookListSortAllowlist[sort]; !allowed {
+	sort := strings.ToLower(strings.TrimSpace(c.DefaultQuery("sort", "id")))
+	if _, allowed := repository.BookListSortFields[sort]; !allowed {
 		httperr.Write(c, http.StatusBadRequest, "Invalid sort field")
 		return q, false
 	}

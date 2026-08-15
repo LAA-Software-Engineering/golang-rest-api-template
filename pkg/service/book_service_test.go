@@ -84,15 +84,26 @@ func TestBooksListDataCacheKey(t *testing.T) {
 		Sort: "title", Order: "desc",
 	}
 	assert.Equal(t,
-		"books_g2_offset_5_limit_10_title_go_author_ann_owner___sort_title_order_desc",
+		"books_g2_offset_5_limit_10_title_676f_author_616e6e_owner___sort_title_order_desc",
 		BooksListDataCacheKey(2, q),
 	)
 	owner := uint(7)
 	q.OwnerID = &owner
 	assert.Equal(t,
-		"books_g2_offset_5_limit_10_title_go_author_ann_owner_7_sort_title_order_desc",
+		"books_g2_offset_5_limit_10_title_676f_author_616e6e_owner_7_sort_title_order_desc",
 		BooksListDataCacheKey(2, q),
 	)
+}
+
+func TestBooksListDataCacheKeyDelimiterCollision(t *testing.T) {
+	// Raw string interpolation would make these collide; hex encoding must not.
+	q1 := defaultListQuery(0, 10)
+	q1.TitleLike = "x_author_y"
+	q1.AuthorLike = "z"
+	q2 := defaultListQuery(0, 10)
+	q2.TitleLike = "x"
+	q2.AuthorLike = "y_author_z"
+	assert.NotEqual(t, BooksListDataCacheKey(0, q1), BooksListDataCacheKey(0, q2))
 }
 
 func TestListBooksNilRedisUsesStore(t *testing.T) {
