@@ -88,6 +88,18 @@ func JWTAuth(denylist auth.TokenDenylist) gin.HandlerFunc {
 			}
 		}
 
+		if claims.IssuedAt != nil {
+			revoked, err := denylist.IsUserRevoked(c.Request.Context(), claims.UserID, claims.IssuedAt.Time)
+			if err != nil {
+				httperr.Abort(c, http.StatusUnauthorized, "Invalid token")
+				return
+			}
+			if revoked {
+				httperr.Abort(c, http.StatusUnauthorized, "Token revoked")
+				return
+			}
+		}
+
 		c.Set("username", claims.Username)
 		c.Set(ContextUserID, claims.UserID)
 		c.Set(ContextRole, claims.Role)

@@ -183,7 +183,7 @@ Names below match `os.Getenv` usage in this repository:
 | `JWT_SECRET_KEY` | Secret for signing JWTs (`pkg/auth/auth.go`) |
 | `ACCESS_TOKEN_TTL` | Optional access JWT lifetime (Go duration; default `5m`) |
 | `REFRESH_TOKEN_TTL` | Optional opaque refresh token lifetime (Go duration; default `168h` / 7 days) |
-| `TOKEN_DENYLIST_ENABLED` | Optional Redis `jti` denylist for logout (`true`/`false`; default on). When off or Redis is unavailable, login/refresh/logout still work via Postgres; access JWTs remain valid until natural expiry after logout. |
+| `TOKEN_DENYLIST_ENABLED` | Optional Redis access-token denylist for logout (`true`/`false`; default on). When on: per-`jti` denylist plus per-user `revoke_before` on logout-all. When off or Redis is unavailable, reads fail open (tokens accepted); login/refresh/logout still work via Postgres. |
 | `BCRYPT_COST` | Optional bcrypt work factor for **new** password hashes (integer `10`–`31`; default **`12`**, was 14). Values below `10` clamp to `10` with a log line. See [#128](https://github.com/LAA-Software-Engineering/golang-rest-api-template/issues/128). |
 | `API_SECRET_KEY` | Secret compared to the `X-API-Key` header (`pkg/middleware/api_key.go`) |
 | `GIN_MODE` | Standard Gin variable: `debug` (default if unset), `release` (enables Security + XSS middleware in `pkg/api/router.go`), or `test` |
@@ -235,7 +235,7 @@ http://localhost:8001/swagger/index.html
 - `DELETE /api/v1/books/:id`: Delete a book.
 - `POST /api/v1/login`: Login (returns access JWT + opaque refresh token).
 - `POST /api/v1/refresh`: Rotate refresh token and issue a new access JWT.
-- `POST /api/v1/logout`: Revoke refresh token(s); denylist access JWT `jti` when Redis denylist is enabled.
+- `POST /api/v1/logout`: Revoke refresh token(s); denylist current access JWT `jti`; empty body also sets per-user `revoke_before` so other devices' access JWTs are rejected when Redis denylist is enabled.
 - `POST /api/v1/register`: Register a new user.
 - `GET /api/v1/admin/me`: Admin-only identity probe (API key + JWT with `role=admin`).
 - `GET /swagger/*`: Swagger UI (no `X-API-Key`).
@@ -252,7 +252,7 @@ Under **`/api/v1`**, every route **except** `GET /api/v1/` (health) requires the
 
 Book **mutations** (`POST`, `PUT`, `PATCH`, and `DELETE` on `/api/v1/books` and `/api/v1/books/:id`) also require a valid user JWT in `Authorization: Bearer <token>` (obtain tokens from `POST /api/v1/login`; the access JWT is at **`data.access_token`** or legacy **`data.token`**). Book **reads** (`GET` list and `GET` by id) require the API key only.
 
-Access JWTs are short-lived (default 5 minutes, configurable via `ACCESS_TOKEN_TTL`) and include `jti` / `iat`. Use `POST /api/v1/refresh` with `{"refresh_token":"..."}` to rotate the opaque refresh token (stored hashed in Postgres) and obtain a new pair. Reuse of a consumed refresh token revokes that token family. `POST /api/v1/logout` (API key + Bearer access JWT) revokes refresh tokens; when `TOKEN_DENYLIST_ENABLED` is on and Redis is reachable, the access JWT `jti` is denylisted until expiry.
+Access JWTs are short-lived (default 5 minutes, configurable via `ACCESS_TOKEN_TTL`) and include `jti` / `iat`. Use `POST /api/v1/refresh` with `{"refresh_token":"..."}` to rotate the opaque refresh token (stored hashed in Postgres) and obtain a new pair. Reuse of a consumed refresh token revokes that token family. `POST /api/v1/logout` (API key + Bearer access JWT) revokes refresh tokens. When `TOKEN_DENYLIST_ENABLED` is on and Redis is reachable, the current access JWT `jti` is denylisted until expiry; an empty logout body (logout all) also writes a per-user `revoke_before` cutoff so other devices' access JWTs with earlier `iat` are rejected immediately. Denylist Redis read failures fail open (token accepted) so auth stays available without Redis.
 
 JWTs include a **`role`** claim (`user` or `admin`). New registrations get `user`. Protect admin routes with `middleware.RequireRole(auth.RoleAdmin)` after `JWTAuth` (see `GET /api/v1/admin/me`). Promote a user by setting `users.role` to `admin` in the database, then logging in again so the new role is embedded in the token.
 

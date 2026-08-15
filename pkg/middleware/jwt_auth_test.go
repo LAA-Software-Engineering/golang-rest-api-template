@@ -125,13 +125,27 @@ func TestJWTAuthSetsUsernameContext(t *testing.T) {
 }
 
 type mapDenylist struct {
-	denied map[string]bool
+	denied       map[string]bool
+	revokeBefore map[uint]time.Time
 }
 
 func (m mapDenylist) Deny(context.Context, string, time.Time) error { return nil }
 
 func (m mapDenylist) IsDenied(_ context.Context, jti string) (bool, error) {
 	return m.denied[jti], nil
+}
+
+func (m mapDenylist) DenyUserBefore(context.Context, uint, time.Time) error { return nil }
+
+func (m mapDenylist) IsUserRevoked(_ context.Context, userID uint, iat time.Time) (bool, error) {
+	if m.revokeBefore == nil {
+		return false, nil
+	}
+	before, ok := m.revokeBefore[userID]
+	if !ok {
+		return false, nil
+	}
+	return before.Unix() > iat.Unix(), nil
 }
 
 func TestJWTAuthRejectsDenylistedJTI(t *testing.T) {
@@ -157,6 +171,58 @@ func TestJWTAuthRejectsDenylistedJTI(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "Token revoked") {
 		t.Fatalf("body=%q", rec.Body.String())
+	}
+}
+
+func TestJWTAuthRejectsUserRevokeBefore(t *testing.T) {
+	token, err := auth.GenerateToken("revoke-user", 7, auth.RoleUser)
+	if err != nil {
+		t.Fatalf("GenerateToken: %v", err)
+	}
+	claims := &auth.Claims{}
+	if _, err := jwt.ParseWithClaims(token, claims, auth.JWTKeyFunc(auth.JWTSigningKey())); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	cutoff := claims.IssuedAt.Time.Add(time.Second)
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/p", JWTAuth(mapDenylist{
+		revokeBefore: map[uint]time.Time{7: cutoff},
+	}), func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+	req := httptest.NewRequest(http.MethodGet, "/p", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestJWTAuthAllowsTokenIssuedAfterRevokeBefore(t *testing.T) {
+	token, err := auth.GenerateToken("ok-user", 8, auth.RoleUser)
+	if err != nil {
+		t.Fatalf("GenerateToken: %v", err)
+	}
+	claims := &auth.Claims{}
+	if _, err := jwt.ParseWithClaims(token, claims, auth.JWTKeyFunc(auth.JWTSigningKey())); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	cutoff := claims.IssuedAt.Time.Add(-time.Minute)
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/p", JWTAuth(mapDenylist{
+		revokeBefore: map[uint]time.Time{8: cutoff},
+	}), func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+	req := httptest.NewRequest(http.MethodGet, "/p", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%q", rec.Code, rec.Body.String())
 	}
 }
 

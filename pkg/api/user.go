@@ -118,13 +118,13 @@ func (h *userHandler) RefreshHandler(c *gin.Context) {
 // LogoutHandler godoc
 // @Summary Log out and revoke tokens
 // @Schemes
-// @Description Revokes refresh token(s) for the authenticated user and denylists the current access JWT when Redis denylist is enabled
+// @Description Revokes refresh token(s) for the authenticated user. Empty body revokes all refresh sessions and sets a per-user access-token revoke_before cutoff (when Redis denylist is enabled) so other devices' access JWTs are rejected immediately. When refresh_token is provided, only that token family is revoked. The current access JWT jti is always denylisted when denylist is enabled.
 // @Tags user
 // @Security ApiKeyAuth
 // @Security JwtAuth
 // @Accept  json
 // @Produce  json
-// @Param   body  body  models.LogoutRequest  false  "Optional refresh token to revoke a single family"
+// @Param   body  body  models.LogoutRequest  false  "Optional refresh token to revoke a single family; omit to logout all sessions"
 // @Success 200 {object} models.LogoutAPIResponse "Logout confirmation"
 // @Failure 401 {string} string "Unauthorized"
 // @Failure 500 {string} string "Internal Server Error"

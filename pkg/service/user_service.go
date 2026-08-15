@@ -138,6 +138,10 @@ func (s *UserService) Logout(ctx context.Context, userID uint, refreshPlaintext,
 		if err := s.refresh.RevokeAllForUser(userID, now); err != nil {
 			return fmtError(ErrLogoutPersist, err)
 		}
+		if err := s.denylist.DenyUserBefore(ctx, userID, now); err != nil {
+			// User revoke_before is best-effort; refresh revocation already succeeded.
+			_ = err
+		}
 	}
 
 	if accessJTI != "" && !accessExp.IsZero() {

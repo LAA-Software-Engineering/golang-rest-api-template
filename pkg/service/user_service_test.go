@@ -282,6 +282,74 @@ func TestUserServiceLogoutRevokesRefresh(t *testing.T) {
 	assert.ErrorIs(t, err, ErrInvalidRefresh)
 }
 
+type recordingDenylist struct {
+	auth.NoopDenylist
+	denyUserCalls int
+	denyJTICalls  int
+	lastUserID    uint
+}
+
+func (r *recordingDenylist) Deny(ctx context.Context, jti string, until time.Time) error {
+	r.denyJTICalls++
+	return nil
+}
+
+func (r *recordingDenylist) DenyUserBefore(ctx context.Context, userID uint, before time.Time) error {
+	r.denyUserCalls++
+	r.lastUserID = userID
+	return nil
+}
+
+func TestUserServiceLogoutAllCallsDenyUserBefore(t *testing.T) {
+	prev := auth.JWTSigningKey()
+	t.Cleanup(func() { _ = auth.SetJWTSigningKey(prev) })
+	require.NoError(t, auth.SetJWTSigningKey(bytes.Repeat([]byte("s"), auth.MinJWTSecretKeyBytes)))
+
+	hash, err := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.MinCost)
+	require.NoError(t, err)
+	user := &models.User{ID: 21, Username: "all", Password: string(hash), Role: auth.RoleUser}
+	users := &fakeUserStore{
+		findFn:     func(string) (*models.User, error) { return user, nil },
+		findByIDFn: func(id uint) (*models.User, error) { return user, nil },
+	}
+	dl := &recordingDenylist{}
+	svc := NewUserService(users, newMemRefreshStore(), dl)
+
+	pair, err := svc.Login(context.Background(), "all", "secret")
+	require.NoError(t, err)
+
+	require.NoError(t, svc.Logout(context.Background(), user.ID, "", "jti-x", time.Now().Add(time.Minute)))
+	assert.Equal(t, 1, dl.denyUserCalls)
+	assert.Equal(t, user.ID, dl.lastUserID)
+	assert.Equal(t, 1, dl.denyJTICalls)
+
+	_, err = svc.Refresh(context.Background(), pair.RefreshToken)
+	assert.ErrorIs(t, err, ErrInvalidRefresh)
+}
+
+func TestUserServiceLogoutFamilySkipsDenyUserBefore(t *testing.T) {
+	prev := auth.JWTSigningKey()
+	t.Cleanup(func() { _ = auth.SetJWTSigningKey(prev) })
+	require.NoError(t, auth.SetJWTSigningKey(bytes.Repeat([]byte("s"), auth.MinJWTSecretKeyBytes)))
+
+	hash, err := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.MinCost)
+	require.NoError(t, err)
+	user := &models.User{ID: 22, Username: "one", Password: string(hash), Role: auth.RoleUser}
+	users := &fakeUserStore{
+		findFn:     func(string) (*models.User, error) { return user, nil },
+		findByIDFn: func(id uint) (*models.User, error) { return user, nil },
+	}
+	dl := &recordingDenylist{}
+	svc := NewUserService(users, newMemRefreshStore(), dl)
+
+	pair, err := svc.Login(context.Background(), "one", "secret")
+	require.NoError(t, err)
+
+	require.NoError(t, svc.Logout(context.Background(), user.ID, pair.RefreshToken, "jti-y", time.Now().Add(time.Minute)))
+	assert.Equal(t, 0, dl.denyUserCalls)
+	assert.Equal(t, 1, dl.denyJTICalls)
+}
+
 func TestUserServiceRegisterSetsUserRole(t *testing.T) {
 	var created *models.User
 	store := &fakeUserStore{
