@@ -183,7 +183,7 @@ func TestJWTAuthRejectsUserRevokeBefore(t *testing.T) {
 	if _, err := jwt.ParseWithClaims(token, claims, auth.JWTKeyFunc(auth.JWTSigningKey())); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	cutoff := claims.IssuedAt.Time.Add(time.Second)
+	cutoff := claims.IssuedAt.Add(time.Second)
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.GET("/p", JWTAuth(mapDenylist{
@@ -209,7 +209,7 @@ func TestJWTAuthAllowsTokenIssuedAfterRevokeBefore(t *testing.T) {
 	if _, err := jwt.ParseWithClaims(token, claims, auth.JWTKeyFunc(auth.JWTSigningKey())); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	cutoff := claims.IssuedAt.Time.Add(-time.Minute)
+	cutoff := claims.IssuedAt.Add(-time.Minute)
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.GET("/p", JWTAuth(mapDenylist{
