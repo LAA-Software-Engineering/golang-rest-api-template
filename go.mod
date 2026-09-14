@@ -1,6 +1,6 @@
 module golang-rest-api-template
 
-go 1.25.13
+go 1.26.0
 
 require (
 	github.com/araujo88/gin-gonic-xss-middleware v0.0.0-20221014023455-d89f16de6a7e
@@ -24,7 +24,7 @@ require (
 	go.uber.org/mock v0.6.0
 	go.uber.org/zap v1.28.0
 	golang.org/x/crypto v0.55.0
-	golang.org/x/sync v0.22.0
+	golang.org/x/sync v0.23.0
 	gorm.io/driver/postgres v1.6.2
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.2
