@@ -3,20 +3,16 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"golang-rest-api-template/pkg/api"
 	"golang-rest-api-template/pkg/auth"
 	"golang-rest-api-template/pkg/cache"
 	"golang-rest-api-template/pkg/database"
-	"golang-rest-api-template/pkg/events"
-	eventskafka "golang-rest-api-template/pkg/events/kafka"
 	"golang-rest-api-template/pkg/middleware"
 	"golang-rest-api-template/pkg/tracing"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -64,31 +60,6 @@ func ignorableZapSyncErr(err error) bool {
 		}
 	}
 	return false
-}
-
-// buildPublisher selects the domain-event publisher from EVENTS_DRIVER. This
-// switch is the single place that knows which backends exist, keeping the Kafka
-// adapter (and any future adapter) cleanly removable.
-//
-//	EVENTS_DRIVER unset|none -> events.NopPublisher (default; no publishing)
-//	EVENTS_DRIVER=kafka       -> Kafka producer from KAFKA_* + SERVICE_NAME
-func buildPublisher() (events.Publisher, error) {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("EVENTS_DRIVER"))) {
-	case "", "none":
-		return events.NopPublisher{}, nil
-	case "kafka":
-		cfg, err := eventskafka.ConfigFromEnv()
-		if err != nil {
-			return nil, err
-		}
-		source := strings.TrimSpace(os.Getenv("SERVICE_NAME"))
-		if source == "" {
-			source = "golang-rest-api-template"
-		}
-		return eventskafka.New(cfg, source), nil
-	default:
-		return nil, fmt.Errorf("unsupported EVENTS_DRIVER %q (want \"none\" or \"kafka\")", os.Getenv("EVENTS_DRIVER"))
-	}
 }
 
 func main() {
