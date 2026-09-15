@@ -48,16 +48,22 @@ func IsUserNotFound(err error) bool {
 }
 
 // isUsernameUniqueConstraintError reports whether err is a Postgres unique
-// constraint violation (SQLState 23505) or a driver string that indicates one.
+// constraint violation (SQLSTATE 23505) on the username constraint specifically.
+// Scoping to the username constraint (rather than any 23505) avoids misreporting a
+// future unique column's violation as a username conflict. A driver-string
+// fallback covers non-pgconn errors (e.g. wrapped errors in tests).
 func isUsernameUniqueConstraintError(err error) bool {
 	if err == nil {
 		return false
 	}
 	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return true
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == "23505" && strings.Contains(pgErr.ConstraintName, "username")
 	}
 	s := strings.ToLower(err.Error())
+	if !strings.Contains(s, "username") {
+		return false
+	}
 	if strings.Contains(s, "unique constraint") {
 		return true
 	}

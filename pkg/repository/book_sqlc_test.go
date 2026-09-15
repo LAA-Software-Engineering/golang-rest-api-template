@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"sync"
 	"testing"
 
@@ -18,10 +19,10 @@ func newBookStore(t *testing.T) *SQLCBookStore {
 func TestSQLCBookStoreListCreateFirstByID(t *testing.T) {
 	s := newBookStore(t)
 
-	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "A", Author: "1"}))
-	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "B", Author: "2"}))
+	assert.NoError(t, s.Create(context.Background(), &models.Book{OwnerID: 1, Title: "A", Author: "1"}))
+	assert.NoError(t, s.Create(context.Background(), &models.Book{OwnerID: 1, Title: "B", Author: "2"}))
 
-	list, err := s.List(BookListQuery{Offset: 0, Limit: 10})
+	list, err := s.List(context.Background(), BookListQuery{Offset: 0, Limit: 10})
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -29,7 +30,7 @@ func TestSQLCBookStoreListCreateFirstByID(t *testing.T) {
 		return
 	}
 
-	got, err := s.FirstByID(list[0].ID)
+	got, err := s.FirstByID(context.Background(), list[0].ID)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -39,7 +40,7 @@ func TestSQLCBookStoreListCreateFirstByID(t *testing.T) {
 func TestSQLCBookStoreFirstByIDNotFound(t *testing.T) {
 	s := newBookStore(t)
 
-	_, err := s.FirstByID(999)
+	_, err := s.FirstByID(context.Background(), 999)
 	assert.Error(t, err)
 	assert.True(t, IsBookNotFound(err))
 }
@@ -47,10 +48,10 @@ func TestSQLCBookStoreFirstByIDNotFound(t *testing.T) {
 func TestSQLCBookStoreListOffsetLimit(t *testing.T) {
 	s := newBookStore(t)
 	for i := 0; i < 5; i++ {
-		assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: string(rune('A' + i)), Author: "x"}))
+		assert.NoError(t, s.Create(context.Background(), &models.Book{OwnerID: 1, Title: string(rune('A' + i)), Author: "x"}))
 	}
 
-	page, err := s.List(BookListQuery{Offset: 1, Limit: 2})
+	page, err := s.List(context.Background(), BookListQuery{Offset: 1, Limit: 2})
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -59,10 +60,10 @@ func TestSQLCBookStoreListOffsetLimit(t *testing.T) {
 
 func TestSQLCBookStoreListTitleLike(t *testing.T) {
 	s := newBookStore(t)
-	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "The Go Programming Language", Author: "Donovan"}))
-	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Clean Code", Author: "Martin"}))
+	assert.NoError(t, s.Create(context.Background(), &models.Book{OwnerID: 1, Title: "The Go Programming Language", Author: "Donovan"}))
+	assert.NoError(t, s.Create(context.Background(), &models.Book{OwnerID: 1, Title: "Clean Code", Author: "Martin"}))
 
-	list, err := s.List(BookListQuery{Offset: 0, Limit: 10, TitleLike: "go"})
+	list, err := s.List(context.Background(), BookListQuery{Offset: 0, Limit: 10, TitleLike: "go"})
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -74,10 +75,10 @@ func TestSQLCBookStoreListTitleLike(t *testing.T) {
 
 func TestSQLCBookStoreListAuthorLike(t *testing.T) {
 	s := newBookStore(t)
-	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "A", Author: "Alice Smith"}))
-	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "B", Author: "Bob Jones"}))
+	assert.NoError(t, s.Create(context.Background(), &models.Book{OwnerID: 1, Title: "A", Author: "Alice Smith"}))
+	assert.NoError(t, s.Create(context.Background(), &models.Book{OwnerID: 1, Title: "B", Author: "Bob Jones"}))
 
-	list, err := s.List(BookListQuery{Offset: 0, Limit: 10, AuthorLike: "smith"})
+	list, err := s.List(context.Background(), BookListQuery{Offset: 0, Limit: 10, AuthorLike: "smith"})
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -89,11 +90,11 @@ func TestSQLCBookStoreListAuthorLike(t *testing.T) {
 
 func TestSQLCBookStoreListOwnerID(t *testing.T) {
 	s := newBookStore(t)
-	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "A", Author: "x"}))
-	assert.NoError(t, s.Create(&models.Book{OwnerID: 2, Title: "B", Author: "y"}))
+	assert.NoError(t, s.Create(context.Background(), &models.Book{OwnerID: 1, Title: "A", Author: "x"}))
+	assert.NoError(t, s.Create(context.Background(), &models.Book{OwnerID: 2, Title: "B", Author: "y"}))
 
 	owner := uint(2)
-	list, err := s.List(BookListQuery{Offset: 0, Limit: 10, OwnerID: &owner})
+	list, err := s.List(context.Background(), BookListQuery{Offset: 0, Limit: 10, OwnerID: &owner})
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -105,10 +106,10 @@ func TestSQLCBookStoreListOwnerID(t *testing.T) {
 
 func TestSQLCBookStoreListSortDesc(t *testing.T) {
 	s := newBookStore(t)
-	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Alpha", Author: "z"}))
-	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Beta", Author: "a"}))
+	assert.NoError(t, s.Create(context.Background(), &models.Book{OwnerID: 1, Title: "Alpha", Author: "z"}))
+	assert.NoError(t, s.Create(context.Background(), &models.Book{OwnerID: 1, Title: "Beta", Author: "a"}))
 
-	list, err := s.List(BookListQuery{Offset: 0, Limit: 10, Sort: "title", Order: "desc"})
+	list, err := s.List(context.Background(), BookListQuery{Offset: 0, Limit: 10, Sort: "title", Order: "desc"})
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -122,13 +123,13 @@ func TestSQLCBookStoreListSortDesc(t *testing.T) {
 func TestSQLCBookStoreListCombinedFiltersAndPagination(t *testing.T) {
 	s := newBookStore(t)
 	owner := uint(1)
-	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Go Basics", Author: "Ann"}))
-	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Go Advanced", Author: "Ann"}))
-	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Go Expert", Author: "Ann"}))
-	assert.NoError(t, s.Create(&models.Book{OwnerID: 2, Title: "Go Other", Author: "Ann"}))
-	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Rust", Author: "Ann"}))
+	assert.NoError(t, s.Create(context.Background(), &models.Book{OwnerID: 1, Title: "Go Basics", Author: "Ann"}))
+	assert.NoError(t, s.Create(context.Background(), &models.Book{OwnerID: 1, Title: "Go Advanced", Author: "Ann"}))
+	assert.NoError(t, s.Create(context.Background(), &models.Book{OwnerID: 1, Title: "Go Expert", Author: "Ann"}))
+	assert.NoError(t, s.Create(context.Background(), &models.Book{OwnerID: 2, Title: "Go Other", Author: "Ann"}))
+	assert.NoError(t, s.Create(context.Background(), &models.Book{OwnerID: 1, Title: "Rust", Author: "Ann"}))
 
-	list, err := s.List(BookListQuery{
+	list, err := s.List(context.Background(), BookListQuery{
 		Offset:    1,
 		Limit:     1,
 		TitleLike: "go",
@@ -147,11 +148,11 @@ func TestSQLCBookStoreListCombinedFiltersAndPagination(t *testing.T) {
 
 func TestSQLCBookStoreListLikeMetacharactersLiteral(t *testing.T) {
 	s := newBookStore(t)
-	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "100% Pure", Author: "x"}))
-	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "100 Pure", Author: "x"}))
-	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "under_score", Author: "y"}))
+	assert.NoError(t, s.Create(context.Background(), &models.Book{OwnerID: 1, Title: "100% Pure", Author: "x"}))
+	assert.NoError(t, s.Create(context.Background(), &models.Book{OwnerID: 1, Title: "100 Pure", Author: "x"}))
+	assert.NoError(t, s.Create(context.Background(), &models.Book{OwnerID: 1, Title: "under_score", Author: "y"}))
 
-	list, err := s.List(BookListQuery{Offset: 0, Limit: 10, TitleLike: "100%"})
+	list, err := s.List(context.Background(), BookListQuery{Offset: 0, Limit: 10, TitleLike: "100%"})
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -160,7 +161,7 @@ func TestSQLCBookStoreListLikeMetacharactersLiteral(t *testing.T) {
 	}
 	assert.Equal(t, "100% Pure", list[0].Title)
 
-	list, err = s.List(BookListQuery{Offset: 0, Limit: 10, TitleLike: "under_"})
+	list, err = s.List(context.Background(), BookListQuery{Offset: 0, Limit: 10, TitleLike: "under_"})
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -172,15 +173,15 @@ func TestSQLCBookStoreListLikeMetacharactersLiteral(t *testing.T) {
 
 func TestSQLCBookStoreListStablePaginationOnTiedTitle(t *testing.T) {
 	s := newBookStore(t)
-	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Same", Author: "a"}))
-	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Same", Author: "b"}))
-	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Same", Author: "c"}))
+	assert.NoError(t, s.Create(context.Background(), &models.Book{OwnerID: 1, Title: "Same", Author: "a"}))
+	assert.NoError(t, s.Create(context.Background(), &models.Book{OwnerID: 1, Title: "Same", Author: "b"}))
+	assert.NoError(t, s.Create(context.Background(), &models.Book{OwnerID: 1, Title: "Same", Author: "c"}))
 
-	page1, err := s.List(BookListQuery{Offset: 0, Limit: 2, Sort: "title", Order: "asc"})
+	page1, err := s.List(context.Background(), BookListQuery{Offset: 0, Limit: 2, Sort: "title", Order: "asc"})
 	if !assert.NoError(t, err) {
 		return
 	}
-	page2, err := s.List(BookListQuery{Offset: 2, Limit: 2, Sort: "title", Order: "asc"})
+	page2, err := s.List(context.Background(), BookListQuery{Offset: 2, Limit: 2, Sort: "title", Order: "asc"})
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -201,16 +202,16 @@ func TestSQLCBookStoreListStablePaginationOnTiedTitle(t *testing.T) {
 func TestSQLCBookStoreUpdateFields(t *testing.T) {
 	s := newBookStore(t)
 	b := &models.Book{OwnerID: 1, Title: "old", Author: "old"}
-	assert.NoError(t, s.Create(b))
+	assert.NoError(t, s.Create(context.Background(), b))
 
-	out, err := s.UpdateFields(b.ID, "newt", "newa")
+	out, err := s.UpdateFields(context.Background(), b.ID, "newt", "newa")
 	if !assert.NoError(t, err) {
 		return
 	}
 	assert.Equal(t, "newt", out.Title)
 	assert.Equal(t, "newa", out.Author)
 
-	reloaded, err := s.FirstByID(b.ID)
+	reloaded, err := s.FirstByID(context.Background(), b.ID)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -220,7 +221,7 @@ func TestSQLCBookStoreUpdateFields(t *testing.T) {
 func TestSQLCBookStoreUpdateFieldsNotFound(t *testing.T) {
 	s := newBookStore(t)
 
-	_, err := s.UpdateFields(42, "x", "y")
+	_, err := s.UpdateFields(context.Background(), 42, "x", "y")
 	assert.Error(t, err)
 	assert.True(t, IsBookNotFound(err))
 }
@@ -228,15 +229,15 @@ func TestSQLCBookStoreUpdateFieldsNotFound(t *testing.T) {
 func TestSQLCBookStorePatchFieldsTitleOnly(t *testing.T) {
 	s := newBookStore(t)
 	b := &models.Book{OwnerID: 1, Title: "orig", Author: "keep"}
-	assert.NoError(t, s.Create(b))
+	assert.NoError(t, s.Create(context.Background(), b))
 	newTitle := "patched"
-	out, err := s.PatchFields(b.ID, &newTitle, nil)
+	out, err := s.PatchFields(context.Background(), b.ID, &newTitle, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
 	assert.Equal(t, "patched", out.Title)
 	assert.Equal(t, "keep", out.Author)
-	reloaded, err := s.FirstByID(b.ID)
+	reloaded, err := s.FirstByID(context.Background(), b.ID)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -247,9 +248,9 @@ func TestSQLCBookStorePatchFieldsTitleOnly(t *testing.T) {
 func TestSQLCBookStorePatchFieldsAuthorOnly(t *testing.T) {
 	s := newBookStore(t)
 	b := &models.Book{OwnerID: 1, Title: "keep", Author: "orig"}
-	assert.NoError(t, s.Create(b))
+	assert.NoError(t, s.Create(context.Background(), b))
 	newAuthor := "new-author"
-	out, err := s.PatchFields(b.ID, nil, &newAuthor)
+	out, err := s.PatchFields(context.Background(), b.ID, nil, &newAuthor)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -260,8 +261,8 @@ func TestSQLCBookStorePatchFieldsAuthorOnly(t *testing.T) {
 func TestSQLCBookStorePatchFieldsNoChange(t *testing.T) {
 	s := newBookStore(t)
 	b := &models.Book{OwnerID: 1, Title: "keep", Author: "same"}
-	assert.NoError(t, s.Create(b))
-	out, err := s.PatchFields(b.ID, nil, nil)
+	assert.NoError(t, s.Create(context.Background(), b))
+	out, err := s.PatchFields(context.Background(), b.ID, nil, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -272,24 +273,24 @@ func TestSQLCBookStorePatchFieldsNoChange(t *testing.T) {
 func TestSQLCBookStoreDeleteByID(t *testing.T) {
 	s := newBookStore(t)
 	b := &models.Book{OwnerID: 1, Title: "gone", Author: "soon"}
-	assert.NoError(t, s.Create(b))
+	assert.NoError(t, s.Create(context.Background(), b))
 
-	assert.NoError(t, s.DeleteByID(b.ID))
-	_, err := s.FirstByID(b.ID)
+	assert.NoError(t, s.DeleteByID(context.Background(), b.ID))
+	_, err := s.FirstByID(context.Background(), b.ID)
 	assert.True(t, IsBookNotFound(err))
 }
 
 func TestSQLCBookStoreDeleteByIDNotFound(t *testing.T) {
 	s := newBookStore(t)
 
-	err := s.DeleteByID(99)
+	err := s.DeleteByID(context.Background(), 99)
 	assert.Error(t, err)
 	assert.True(t, IsBookNotFound(err))
 }
 
 func TestSQLCBookStoreListConcurrent(t *testing.T) {
 	s := newBookStore(t)
-	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "c", Author: "c"}))
+	assert.NoError(t, s.Create(context.Background(), &models.Book{OwnerID: 1, Title: "c", Author: "c"}))
 
 	var wg sync.WaitGroup
 	const n = 32
@@ -297,7 +298,7 @@ func TestSQLCBookStoreListConcurrent(t *testing.T) {
 	for i := 0; i < n; i++ {
 		go func() {
 			defer wg.Done()
-			_, err := s.List(BookListQuery{Offset: 0, Limit: 10})
+			_, err := s.List(context.Background(), BookListQuery{Offset: 0, Limit: 10})
 			assert.NoError(t, err)
 		}()
 	}

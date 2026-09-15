@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -40,7 +41,7 @@ func seedUser(t *testing.T, pool *pgxpool.Pool, username, plaintext string) {
 	t.Helper()
 	hashed, err := auth.HashPassword(plaintext)
 	require.NoError(t, err)
-	require.NoError(t, repository.NewSQLCUserStore(pool).Create(&models.User{
+	require.NoError(t, repository.NewSQLCUserStore(pool).Create(context.Background(), &models.User{
 		Username: username,
 		Password: hashed,
 		Role:     auth.RoleUser,
@@ -262,7 +263,7 @@ func TestRegisterHandlerDBError(t *testing.T) {
 	loginUser := models.LoginUser{Username: "newuser", Password: "password"}
 	requestBody, _ := json.Marshal(loginUser)
 
-	mockUsers.EXPECT().Create(gomock.Any()).Return(errors.New("internal-db-failure"))
+	mockUsers.EXPECT().Create(gomock.Any(), gomock.Any()).Return(errors.New("internal-db-failure"))
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/register", bytes.NewBuffer(requestBody))

@@ -10,6 +10,7 @@
 package repository
 
 import (
+	context "context"
 	models "golang-rest-api-template/pkg/models"
 	reflect "reflect"
 
@@ -41,91 +42,91 @@ func (m *MockBookPersistence) EXPECT() *MockBookPersistenceMockRecorder {
 }
 
 // Create mocks base method.
-func (m *MockBookPersistence) Create(book *models.Book) error {
+func (m *MockBookPersistence) Create(ctx context.Context, book *models.Book) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Create", book)
+	ret := m.ctrl.Call(m, "Create", ctx, book)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Create indicates an expected call of Create.
-func (mr *MockBookPersistenceMockRecorder) Create(book any) *gomock.Call {
+func (mr *MockBookPersistenceMockRecorder) Create(ctx, book any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockBookPersistence)(nil).Create), book)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockBookPersistence)(nil).Create), ctx, book)
 }
 
 // DeleteByID mocks base method.
-func (m *MockBookPersistence) DeleteByID(id uint) error {
+func (m *MockBookPersistence) DeleteByID(ctx context.Context, id uint) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteByID", id)
+	ret := m.ctrl.Call(m, "DeleteByID", ctx, id)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteByID indicates an expected call of DeleteByID.
-func (mr *MockBookPersistenceMockRecorder) DeleteByID(id any) *gomock.Call {
+func (mr *MockBookPersistenceMockRecorder) DeleteByID(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByID", reflect.TypeOf((*MockBookPersistence)(nil).DeleteByID), id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByID", reflect.TypeOf((*MockBookPersistence)(nil).DeleteByID), ctx, id)
 }
 
 // FirstByID mocks base method.
-func (m *MockBookPersistence) FirstByID(id uint) (*models.Book, error) {
+func (m *MockBookPersistence) FirstByID(ctx context.Context, id uint) (*models.Book, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FirstByID", id)
+	ret := m.ctrl.Call(m, "FirstByID", ctx, id)
 	ret0, _ := ret[0].(*models.Book)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // FirstByID indicates an expected call of FirstByID.
-func (mr *MockBookPersistenceMockRecorder) FirstByID(id any) *gomock.Call {
+func (mr *MockBookPersistenceMockRecorder) FirstByID(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FirstByID", reflect.TypeOf((*MockBookPersistence)(nil).FirstByID), id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FirstByID", reflect.TypeOf((*MockBookPersistence)(nil).FirstByID), ctx, id)
 }
 
 // List mocks base method.
-func (m *MockBookPersistence) List(q BookListQuery) ([]models.Book, error) {
+func (m *MockBookPersistence) List(ctx context.Context, q BookListQuery) ([]models.Book, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "List", q)
+	ret := m.ctrl.Call(m, "List", ctx, q)
 	ret0, _ := ret[0].([]models.Book)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // List indicates an expected call of List.
-func (mr *MockBookPersistenceMockRecorder) List(q any) *gomock.Call {
+func (mr *MockBookPersistenceMockRecorder) List(ctx, q any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockBookPersistence)(nil).List), q)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockBookPersistence)(nil).List), ctx, q)
 }
 
 // PatchFields mocks base method.
-func (m *MockBookPersistence) PatchFields(id uint, title, author *string) (*models.Book, error) {
+func (m *MockBookPersistence) PatchFields(ctx context.Context, id uint, title, author *string) (*models.Book, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PatchFields", id, title, author)
+	ret := m.ctrl.Call(m, "PatchFields", ctx, id, title, author)
 	ret0, _ := ret[0].(*models.Book)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // PatchFields indicates an expected call of PatchFields.
-func (mr *MockBookPersistenceMockRecorder) PatchFields(id, title, author any) *gomock.Call {
+func (mr *MockBookPersistenceMockRecorder) PatchFields(ctx, id, title, author any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PatchFields", reflect.TypeOf((*MockBookPersistence)(nil).PatchFields), id, title, author)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PatchFields", reflect.TypeOf((*MockBookPersistence)(nil).PatchFields), ctx, id, title, author)
 }
 
 // UpdateFields mocks base method.
-func (m *MockBookPersistence) UpdateFields(id uint, title, author string) (*models.Book, error) {
+func (m *MockBookPersistence) UpdateFields(ctx context.Context, id uint, title, author string) (*models.Book, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateFields", id, title, author)
+	ret := m.ctrl.Call(m, "UpdateFields", ctx, id, title, author)
 	ret0, _ := ret[0].(*models.Book)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // UpdateFields indicates an expected call of UpdateFields.
-func (mr *MockBookPersistenceMockRecorder) UpdateFields(id, title, author any) *gomock.Call {
+func (mr *MockBookPersistenceMockRecorder) UpdateFields(ctx, id, title, author any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateFields", reflect.TypeOf((*MockBookPersistence)(nil).UpdateFields), id, title, author)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateFields", reflect.TypeOf((*MockBookPersistence)(nil).UpdateFields), ctx, id, title, author)
 }
 
 // MockUserPersistence is a mock of UserPersistence interface.
@@ -153,45 +154,45 @@ func (m *MockUserPersistence) EXPECT() *MockUserPersistenceMockRecorder {
 }
 
 // Create mocks base method.
-func (m *MockUserPersistence) Create(user *models.User) error {
+func (m *MockUserPersistence) Create(ctx context.Context, user *models.User) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Create", user)
+	ret := m.ctrl.Call(m, "Create", ctx, user)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Create indicates an expected call of Create.
-func (mr *MockUserPersistenceMockRecorder) Create(user any) *gomock.Call {
+func (mr *MockUserPersistenceMockRecorder) Create(ctx, user any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockUserPersistence)(nil).Create), user)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockUserPersistence)(nil).Create), ctx, user)
 }
 
 // FindByID mocks base method.
-func (m *MockUserPersistence) FindByID(id uint) (*models.User, error) {
+func (m *MockUserPersistence) FindByID(ctx context.Context, id uint) (*models.User, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FindByID", id)
+	ret := m.ctrl.Call(m, "FindByID", ctx, id)
 	ret0, _ := ret[0].(*models.User)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // FindByID indicates an expected call of FindByID.
-func (mr *MockUserPersistenceMockRecorder) FindByID(id any) *gomock.Call {
+func (mr *MockUserPersistenceMockRecorder) FindByID(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByID", reflect.TypeOf((*MockUserPersistence)(nil).FindByID), id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByID", reflect.TypeOf((*MockUserPersistence)(nil).FindByID), ctx, id)
 }
 
 // FindByUsername mocks base method.
-func (m *MockUserPersistence) FindByUsername(username string) (*models.User, error) {
+func (m *MockUserPersistence) FindByUsername(ctx context.Context, username string) (*models.User, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FindByUsername", username)
+	ret := m.ctrl.Call(m, "FindByUsername", ctx, username)
 	ret0, _ := ret[0].(*models.User)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // FindByUsername indicates an expected call of FindByUsername.
-func (mr *MockUserPersistenceMockRecorder) FindByUsername(username any) *gomock.Call {
+func (mr *MockUserPersistenceMockRecorder) FindByUsername(ctx, username any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByUsername", reflect.TypeOf((*MockUserPersistence)(nil).FindByUsername), username)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByUsername", reflect.TypeOf((*MockUserPersistence)(nil).FindByUsername), ctx, username)
 }

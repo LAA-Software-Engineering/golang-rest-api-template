@@ -25,7 +25,7 @@ func TestApplyPoolConfigDefaults(t *testing.T) {
 	applyPoolConfig(cfg)
 
 	assert.Equal(t, int32(defaultPostgresMaxOpenConns), cfg.MaxConns)
-	assert.Equal(t, int32(defaultPostgresMaxIdleConns), cfg.MinConns)
+	assert.Equal(t, int32(defaultPostgresMaxIdleConns), cfg.MinIdleConns)
 	assert.Equal(t, defaultPostgresConnMaxLifetime, cfg.MaxConnLifetime)
 	assert.Equal(t, defaultPostgresConnMaxIdleTime, cfg.MaxConnIdleTime)
 }
@@ -41,7 +41,7 @@ func TestApplyPoolConfigFromEnv(t *testing.T) {
 	applyPoolConfig(cfg)
 
 	assert.Equal(t, int32(10), cfg.MaxConns)
-	assert.Equal(t, int32(10), cfg.MinConns, "idle should be capped at max open")
+	assert.Equal(t, int32(10), cfg.MinIdleConns, "idle should be capped at max open")
 	assert.Equal(t, 2*time.Hour, cfg.MaxConnLifetime)
 	assert.Equal(t, time.Minute, cfg.MaxConnIdleTime)
 }

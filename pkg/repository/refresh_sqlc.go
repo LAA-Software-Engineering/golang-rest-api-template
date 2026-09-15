@@ -35,8 +35,8 @@ func refreshFromDB(t dbsqlc.RefreshToken) models.RefreshToken {
 	}
 }
 
-func (s *SQLCRefreshTokenStore) Create(token *models.RefreshToken) error {
-	row, err := s.q.CreateRefreshToken(context.Background(), dbsqlc.CreateRefreshTokenParams{
+func (s *SQLCRefreshTokenStore) Create(ctx context.Context, token *models.RefreshToken) error {
+	row, err := s.q.CreateRefreshToken(ctx, dbsqlc.CreateRefreshTokenParams{
 		UserID:    toInt64(token.UserID),
 		TokenHash: token.TokenHash,
 		FamilyID:  token.FamilyID,
@@ -49,8 +49,8 @@ func (s *SQLCRefreshTokenStore) Create(token *models.RefreshToken) error {
 	return nil
 }
 
-func (s *SQLCRefreshTokenStore) FindByHash(tokenHash string) (*models.RefreshToken, error) {
-	row, err := s.q.GetRefreshTokenByHash(context.Background(), tokenHash)
+func (s *SQLCRefreshTokenStore) FindByHash(ctx context.Context, tokenHash string) (*models.RefreshToken, error) {
+	row, err := s.q.GetRefreshTokenByHash(ctx, tokenHash)
 	if err != nil {
 		return nil, mapNotFound(err)
 	}
@@ -59,8 +59,7 @@ func (s *SQLCRefreshTokenStore) FindByHash(tokenHash string) (*models.RefreshTok
 }
 
 // RotateAtomically conditionally consumes oldID and inserts next in one TX.
-func (s *SQLCRefreshTokenStore) RotateAtomically(oldID uint, at time.Time, next *models.RefreshToken) error {
-	ctx := context.Background()
+func (s *SQLCRefreshTokenStore) RotateAtomically(ctx context.Context, oldID uint, at time.Time, next *models.RefreshToken) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -95,17 +94,17 @@ func (s *SQLCRefreshTokenStore) RotateAtomically(oldID uint, at time.Time, next 
 	return nil
 }
 
-func (s *SQLCRefreshTokenStore) RevokeFamily(familyID string, at time.Time) error {
+func (s *SQLCRefreshTokenStore) RevokeFamily(ctx context.Context, familyID string, at time.Time) error {
 	revokedAt := at
-	return s.q.RevokeRefreshFamily(context.Background(), dbsqlc.RevokeRefreshFamilyParams{
+	return s.q.RevokeRefreshFamily(ctx, dbsqlc.RevokeRefreshFamilyParams{
 		FamilyID:  familyID,
 		RevokedAt: &revokedAt,
 	})
 }
 
-func (s *SQLCRefreshTokenStore) RevokeAllForUser(userID uint, at time.Time) error {
+func (s *SQLCRefreshTokenStore) RevokeAllForUser(ctx context.Context, userID uint, at time.Time) error {
 	revokedAt := at
-	return s.q.RevokeAllRefreshForUser(context.Background(), dbsqlc.RevokeAllRefreshForUserParams{
+	return s.q.RevokeAllRefreshForUser(ctx, dbsqlc.RevokeAllRefreshForUserParams{
 		UserID:    toInt64(userID),
 		RevokedAt: &revokedAt,
 	})

@@ -31,8 +31,8 @@ func userFromDB(u dbsqlc.User) models.User {
 	}
 }
 
-func (s *SQLCUserStore) FindByUsername(username string) (*models.User, error) {
-	row, err := s.q.GetUserByUsername(context.Background(), username)
+func (s *SQLCUserStore) FindByUsername(ctx context.Context, username string) (*models.User, error) {
+	row, err := s.q.GetUserByUsername(ctx, username)
 	if err != nil {
 		return nil, mapNotFound(err)
 	}
@@ -40,8 +40,8 @@ func (s *SQLCUserStore) FindByUsername(username string) (*models.User, error) {
 	return &u, nil
 }
 
-func (s *SQLCUserStore) FindByID(id uint) (*models.User, error) {
-	row, err := s.q.GetUserByID(context.Background(), toInt64(id))
+func (s *SQLCUserStore) FindByID(ctx context.Context, id uint) (*models.User, error) {
+	row, err := s.q.GetUserByID(ctx, toInt64(id))
 	if err != nil {
 		return nil, mapNotFound(err)
 	}
@@ -49,8 +49,8 @@ func (s *SQLCUserStore) FindByID(id uint) (*models.User, error) {
 	return &u, nil
 }
 
-func (s *SQLCUserStore) Create(user *models.User) error {
-	row, err := s.q.CreateUser(context.Background(), dbsqlc.CreateUserParams{
+func (s *SQLCUserStore) Create(ctx context.Context, user *models.User) error {
+	row, err := s.q.CreateUser(ctx, dbsqlc.CreateUserParams{
 		Username: user.Username,
 		Password: user.Password,
 		Role:     user.Role,

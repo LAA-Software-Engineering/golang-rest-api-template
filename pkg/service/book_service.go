@@ -83,7 +83,7 @@ func (s *BookService) bumpListCacheGeneration(ctx context.Context) {
 // ListBooks returns books for the given query using Redis list cache and singleflight on miss.
 func (s *BookService) ListBooks(ctx context.Context, q repository.BookListQuery) ([]models.Book, error) {
 	if s.redis == nil {
-		return s.store.List(q)
+		return s.store.List(ctx, q)
 	}
 
 	gen := s.cacheGeneration(ctx)
@@ -99,7 +99,7 @@ func (s *BookService) ListBooks(ctx context.Context, q repository.BookListQuery)
 	}
 
 	out, err, _ := s.listSF.Do(cacheKey, func() (interface{}, error) {
-		loaded, err := s.store.List(q)
+		loaded, err := s.store.List(ctx, q)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrListBooksDB, err)
 		}
@@ -121,7 +121,7 @@ func (s *BookService) ListBooks(ctx context.Context, q repository.BookListQuery)
 // CreateBook persists a new book owned by ownerID and bumps the list cache generation.
 func (s *BookService) CreateBook(ctx context.Context, ownerID uint, title, author string) (*models.Book, error) {
 	book := &models.Book{OwnerID: ownerID, Title: title, Author: author}
-	if err := s.store.Create(book); err != nil {
+	if err := s.store.Create(ctx, book); err != nil {
 		return nil, err
 	}
 	s.bumpListCacheGeneration(ctx)
@@ -129,20 +129,20 @@ func (s *BookService) CreateBook(ctx context.Context, ownerID uint, title, autho
 }
 
 // GetBook returns a book by id or a repository.ErrNotFound-compatible error from the store.
-func (s *BookService) GetBook(_ context.Context, id uint) (*models.Book, error) {
-	return s.store.FirstByID(id)
+func (s *BookService) GetBook(ctx context.Context, id uint) (*models.Book, error) {
+	return s.store.FirstByID(ctx, id)
 }
 
 // ReplaceBook replaces title and author when actorID owns the book (PUT semantics).
 func (s *BookService) ReplaceBook(ctx context.Context, actorID, id uint, title, author string) (*models.Book, error) {
-	b, err := s.store.FirstByID(id)
+	b, err := s.store.FirstByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	if b.OwnerID != actorID {
 		return nil, ErrBookForbidden
 	}
-	book, err := s.store.UpdateFields(id, title, author)
+	book, err := s.store.UpdateFields(ctx, id, title, author)
 	if err != nil {
 		return nil, err
 	}
@@ -152,14 +152,14 @@ func (s *BookService) ReplaceBook(ctx context.Context, actorID, id uint, title, 
 
 // PatchBook applies a partial update for any non-nil title/author pointers (PATCH semantics).
 func (s *BookService) PatchBook(ctx context.Context, actorID, id uint, title, author *string) (*models.Book, error) {
-	b, err := s.store.FirstByID(id)
+	b, err := s.store.FirstByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	if b.OwnerID != actorID {
 		return nil, ErrBookForbidden
 	}
-	book, err := s.store.PatchFields(id, title, author)
+	book, err := s.store.PatchFields(ctx, id, title, author)
 	if err != nil {
 		return nil, err
 	}
@@ -169,14 +169,14 @@ func (s *BookService) PatchBook(ctx context.Context, actorID, id uint, title, au
 
 // DeleteBook removes a book when actorID owns it, then bumps list cache generation.
 func (s *BookService) DeleteBook(ctx context.Context, actorID, id uint) error {
-	b, err := s.store.FirstByID(id)
+	b, err := s.store.FirstByID(ctx, id)
 	if err != nil {
 		return err
 	}
 	if b.OwnerID != actorID {
 		return ErrBookForbidden
 	}
-	if err := s.store.DeleteByID(id); err != nil {
+	if err := s.store.DeleteByID(ctx, id); err != nil {
 		return err
 	}
 	s.bumpListCacheGeneration(ctx)

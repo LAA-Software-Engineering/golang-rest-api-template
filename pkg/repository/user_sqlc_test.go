@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"testing"
 
 	"golang-rest-api-template/internal/pgtest"
@@ -22,9 +23,9 @@ func TestSQLCUserStoreFindByUsername(t *testing.T) {
 	if !assert.NoError(t, err) {
 		return
 	}
-	assert.NoError(t, s.Create(&models.User{Username: "alice", Password: hash, Role: auth.RoleUser}))
+	assert.NoError(t, s.Create(context.Background(), &models.User{Username: "alice", Password: hash, Role: auth.RoleUser}))
 
-	u, err := s.FindByUsername("alice")
+	u, err := s.FindByUsername(context.Background(), "alice")
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -35,10 +36,10 @@ func TestSQLCUserStoreFindByID(t *testing.T) {
 	s := newUserStore(t)
 
 	created := &models.User{Username: "bob", Password: "p", Role: auth.RoleUser}
-	assert.NoError(t, s.Create(created))
+	assert.NoError(t, s.Create(context.Background(), created))
 	assert.NotZero(t, created.ID)
 
-	u, err := s.FindByID(created.ID)
+	u, err := s.FindByID(context.Background(), created.ID)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -48,7 +49,7 @@ func TestSQLCUserStoreFindByID(t *testing.T) {
 func TestSQLCUserStoreFindByUsernameNotFound(t *testing.T) {
 	s := newUserStore(t)
 
-	_, err := s.FindByUsername("nobody")
+	_, err := s.FindByUsername(context.Background(), "nobody")
 	assert.Error(t, err)
 	assert.True(t, IsUserNotFound(err))
 }
@@ -60,9 +61,9 @@ func TestSQLCUserStoreCreateDuplicateUsername(t *testing.T) {
 	if !assert.NoError(t, err) {
 		return
 	}
-	assert.NoError(t, s.Create(&models.User{Username: "dup", Password: hash, Role: auth.RoleUser}))
+	assert.NoError(t, s.Create(context.Background(), &models.User{Username: "dup", Password: hash, Role: auth.RoleUser}))
 
-	err = s.Create(&models.User{Username: "dup", Password: hash, Role: auth.RoleUser})
+	err = s.Create(context.Background(), &models.User{Username: "dup", Password: hash, Role: auth.RoleUser})
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, ErrUserUsernameConflict)
 }
@@ -73,8 +74,8 @@ func TestSQLCUserStoreCreateDefaultsRole(t *testing.T) {
 	// Role left blank should not be sent as empty and violate NOT NULL; the store
 	// forwards whatever the caller provides. Callers set auth.RoleUser explicitly,
 	// but verify the column default applies when role is provided as 'user'.
-	assert.NoError(t, s.Create(&models.User{Username: "roleuser", Password: "p", Role: "user"}))
-	u, err := s.FindByUsername("roleuser")
+	assert.NoError(t, s.Create(context.Background(), &models.User{Username: "roleuser", Password: "p", Role: "user"}))
+	u, err := s.FindByUsername(context.Background(), "roleuser")
 	if !assert.NoError(t, err) {
 		return
 	}

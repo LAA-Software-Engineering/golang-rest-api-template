@@ -54,7 +54,7 @@ func NewUserService(users repository.UserPersistence, refresh repository.Refresh
 // Login validates credentials and returns an access JWT plus opaque refresh token.
 func (s *UserService) Login(ctx context.Context, username, password string) (TokenPair, error) {
 	var zero TokenPair
-	dbUser, err := s.users.FindByUsername(username)
+	dbUser, err := s.users.FindByUsername(ctx, username)
 	if err != nil {
 		if repository.IsNotFound(err) {
 			return zero, ErrInvalidLogin
@@ -79,7 +79,7 @@ func (s *UserService) Refresh(ctx context.Context, refreshPlaintext string) (Tok
 	}
 
 	hash := auth.HashRefreshToken(refreshPlaintext)
-	row, err := s.refresh.FindByHash(hash)
+	row, err := s.refresh.FindByHash(ctx, hash)
 	if err != nil {
 		if repository.IsNotFound(err) {
 			return zero, ErrInvalidRefresh
@@ -95,7 +95,7 @@ func (s *UserService) Refresh(ctx context.Context, refreshPlaintext string) (Tok
 		return zero, ErrInvalidRefresh
 	}
 	if row.ConsumedAt != nil {
-		if err := s.refresh.RevokeFamily(row.FamilyID, now); err != nil {
+		if err := s.refresh.RevokeFamily(ctx, row.FamilyID, now); err != nil {
 			return zero, fmtError(ErrRefreshPersist, err)
 		}
 		return zero, ErrRefreshReuse
@@ -103,7 +103,7 @@ func (s *UserService) Refresh(ctx context.Context, refreshPlaintext string) (Tok
 
 	// Resolve user and mint credentials before mutating refresh state so a
 	// failed GenerateToken does not consume the presented token.
-	dbUser, err := s.users.FindByID(row.UserID)
+	dbUser, err := s.users.FindByID(ctx, row.UserID)
 	if err != nil {
 		if repository.IsNotFound(err) {
 			return zero, ErrInvalidRefresh
@@ -129,13 +129,13 @@ func (s *UserService) Refresh(ctx context.Context, refreshPlaintext string) (Tok
 		ExpiresAt: now.Add(auth.RefreshTokenTTL()),
 	}
 
-	if err := s.refresh.RotateAtomically(row.ID, now, next); err != nil {
+	if err := s.refresh.RotateAtomically(ctx, row.ID, now, next); err != nil {
 		// Lost race or concurrent use of the same refresh: treat like reuse and
 		// revoke the whole family. That is theft-safe (two parties racing) but a
 		// legitimate double-submit can also kill the winner's new refresh and
 		// force re-login — intentional for this security-first template.
 		if errors.Is(err, repository.ErrRefreshAlreadyConsumed) {
-			if revErr := s.refresh.RevokeFamily(row.FamilyID, now); revErr != nil {
+			if revErr := s.refresh.RevokeFamily(ctx, row.FamilyID, now); revErr != nil {
 				return zero, fmtError(ErrRefreshPersist, revErr)
 			}
 			return zero, ErrRefreshReuse
@@ -161,19 +161,19 @@ func (s *UserService) Logout(ctx context.Context, userID uint, refreshPlaintext,
 
 	if refreshPlaintext != "" {
 		hash := auth.HashRefreshToken(refreshPlaintext)
-		row, err := s.refresh.FindByHash(hash)
+		row, err := s.refresh.FindByHash(ctx, hash)
 		if err != nil {
 			if !repository.IsNotFound(err) {
 				return fmtError(ErrLogoutPersist, err)
 			}
 			// Unknown refresh: still denylist access token and succeed.
 		} else if row.UserID == userID {
-			if err := s.refresh.RevokeFamily(row.FamilyID, now); err != nil {
+			if err := s.refresh.RevokeFamily(ctx, row.FamilyID, now); err != nil {
 				return fmtError(ErrLogoutPersist, err)
 			}
 		}
 	} else {
-		if err := s.refresh.RevokeAllForUser(userID, now); err != nil {
+		if err := s.refresh.RevokeAllForUser(ctx, userID, now); err != nil {
 			return fmtError(ErrLogoutPersist, err)
 		}
 		if err := s.denylist.DenyUserBefore(ctx, userID, now); err != nil {
@@ -190,13 +190,13 @@ func (s *UserService) Logout(ctx context.Context, userID uint, refreshPlaintext,
 }
 
 // Register creates a new user account.
-func (s *UserService) Register(_ context.Context, username, password string) error {
+func (s *UserService) Register(ctx context.Context, username, password string) error {
 	hashedPassword, err := auth.HashPassword(password)
 	if err != nil {
 		return fmtError(ErrRegisterHash, err)
 	}
 	newUser := &models.User{Username: username, Password: hashedPassword, Role: auth.RoleUser}
-	if err := s.users.Create(newUser); err != nil {
+	if err := s.users.Create(ctx, newUser); err != nil {
 		if errors.Is(err, repository.ErrUserUsernameConflict) {
 			return ErrRegisterConflict
 		}
@@ -213,7 +213,7 @@ func (s *UserService) issueTokenPair(ctx context.Context, dbUser *models.User) (
 	return s.issueTokenPairWithFamily(ctx, dbUser, familyID)
 }
 
-func (s *UserService) issueTokenPairWithFamily(_ context.Context, dbUser *models.User, familyID string) (TokenPair, error) {
+func (s *UserService) issueTokenPairWithFamily(ctx context.Context, dbUser *models.User, familyID string) (TokenPair, error) {
 	var zero TokenPair
 	role, err := auth.EffectiveRole(dbUser.Role)
 	if err != nil {
@@ -237,7 +237,7 @@ func (s *UserService) issueTokenPairWithFamily(_ context.Context, dbUser *models
 		FamilyID:  familyID,
 		ExpiresAt: time.Now().Add(auth.RefreshTokenTTL()),
 	}
-	if err := s.refresh.Create(row); err != nil {
+	if err := s.refresh.Create(ctx, row); err != nil {
 		return zero, fmtError(ErrRefreshPersist, err)
 	}
 

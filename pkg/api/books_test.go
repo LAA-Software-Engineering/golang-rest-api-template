@@ -50,28 +50,30 @@ type fakeBookStore struct {
 	books     []models.Book
 }
 
-func (f *fakeBookStore) List(repository.BookListQuery) ([]models.Book, error) {
+func (f *fakeBookStore) List(context.Context, repository.BookListQuery) ([]models.Book, error) {
 	f.listCalls.Add(1)
 	if f.listDelay > 0 {
 		time.Sleep(f.listDelay)
 	}
 	return f.books, nil
 }
-func (f *fakeBookStore) Create(*models.Book) error { return nil }
-func (f *fakeBookStore) FirstByID(uint) (*models.Book, error) {
+func (f *fakeBookStore) Create(context.Context, *models.Book) error { return nil }
+func (f *fakeBookStore) FirstByID(context.Context, uint) (*models.Book, error) {
 	return nil, repository.ErrNotFound
 }
-func (f *fakeBookStore) UpdateFields(uint, string, string) (*models.Book, error) { return nil, nil }
-func (f *fakeBookStore) PatchFields(uint, *string, *string) (*models.Book, error) {
+func (f *fakeBookStore) UpdateFields(context.Context, uint, string, string) (*models.Book, error) {
 	return nil, nil
 }
-func (f *fakeBookStore) DeleteByID(uint) error { return nil }
+func (f *fakeBookStore) PatchFields(context.Context, uint, *string, *string) (*models.Book, error) {
+	return nil, nil
+}
+func (f *fakeBookStore) DeleteByID(context.Context, uint) error { return nil }
 
 // seedBook inserts a book via the persistence layer and returns its stored form.
 func seedBook(t *testing.T, pool *pgxpool.Pool, b models.Book) models.Book {
 	t.Helper()
 	store := repository.NewSQLCBookStore(pool)
-	require.NoError(t, store.Create(&b))
+	require.NoError(t, store.Create(context.Background(), &b))
 	return b
 }
 
@@ -202,7 +204,7 @@ func TestFindBooksLimitCappedAtMax(t *testing.T) {
 	pool := pgtest.Pool(t)
 	store := repository.NewSQLCBookStore(pool)
 	for i := 0; i < 120; i++ {
-		require.NoError(t, store.Create(&models.Book{OwnerID: 1, Title: "b" + strconv.Itoa(i), Author: "a"}))
+		require.NoError(t, store.Create(context.Background(), &models.Book{OwnerID: 1, Title: "b" + strconv.Itoa(i), Author: "a"}))
 	}
 
 	ctrl := gomock.NewController(t)
@@ -251,7 +253,7 @@ func TestCreateBookDatabaseError(t *testing.T) {
 	}
 
 	dbErr := errors.New("db create failed")
-	mockStore.EXPECT().Create(gomock.Any()).Return(dbErr)
+	mockStore.EXPECT().Create(gomock.Any(), gomock.Any()).Return(dbErr)
 
 	w := httptest.NewRecorder()
 	req, err := http.NewRequest("POST", "/books", bytes.NewBuffer(requestBody))
@@ -321,7 +323,7 @@ func TestCreateBookCacheIncrError(t *testing.T) {
 	inputBook := models.CreateBook{Title: "New Book", Author: "New Author"}
 	requestBody, _ := json.Marshal(inputBook)
 
-	mockStore.EXPECT().Create(gomock.Any()).Return(nil)
+	mockStore.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 	mockCache.EXPECT().Incr(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewIntResult(0, errors.New("incr error")))
 
 	w := httptest.NewRecorder()
@@ -371,7 +373,7 @@ func TestUpdateBookNotFound(t *testing.T) {
 	updateInput := models.ReplaceBook{Title: "New Title", Author: "New Author"}
 	requestBody, _ := json.Marshal(updateInput)
 
-	mockStore.EXPECT().FirstByID(uint(1)).Return(nil, repository.ErrNotFound)
+	mockStore.EXPECT().FirstByID(gomock.Any(), uint(1)).Return(nil, repository.ErrNotFound)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("PUT", "/book/1", bytes.NewBuffer(requestBody))
@@ -486,7 +488,7 @@ func TestFindBooksDatabaseError(t *testing.T) {
 		mockCache.EXPECT().Get(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewStringResult("", redis.Nil)),
 		mockCache.EXPECT().Get(gomock.Any(), service.BooksListDataCacheKey(0, defaultBookListQuery(0, 10))).Return(redis.NewStringResult("", redis.Nil)),
 	)
-	mockStore.EXPECT().List(gomock.Any()).Return(nil, errors.New("db list failed"))
+	mockStore.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, errors.New("db list failed"))
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/books?offset=0&limit=10", nil)
@@ -501,8 +503,8 @@ func TestUpdateBookDatabaseErrorOnUpdates(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := repository.NewMockBookPersistence(ctrl)
-	mockStore.EXPECT().FirstByID(uint(1)).Return(&models.Book{ID: 1, OwnerID: 1, Title: "Old Title", Author: "Old Author"}, nil)
-	mockStore.EXPECT().UpdateFields(uint(1), "New Title", "New Author").Return(nil, errors.New("forced update failure"))
+	mockStore.EXPECT().FirstByID(gomock.Any(), uint(1)).Return(&models.Book{ID: 1, OwnerID: 1, Title: "Old Title", Author: "Old Author"}, nil)
+	mockStore.EXPECT().UpdateFields(gomock.Any(), uint(1), "New Title", "New Author").Return(nil, errors.New("forced update failure"))
 
 	h := NewBookHandler(mockStore, nil)
 
@@ -530,8 +532,8 @@ func TestUpdateBookBumpsListCacheGen(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := repository.NewMockBookPersistence(ctrl)
-	mockStore.EXPECT().FirstByID(uint(1)).Return(&models.Book{ID: 1, OwnerID: 1, Title: "t", Author: "a"}, nil)
-	mockStore.EXPECT().UpdateFields(uint(1), "n", "n").Return(&models.Book{ID: 1, OwnerID: 1, Title: "n", Author: "n"}, nil)
+	mockStore.EXPECT().FirstByID(gomock.Any(), uint(1)).Return(&models.Book{ID: 1, OwnerID: 1, Title: "t", Author: "a"}, nil)
+	mockStore.EXPECT().UpdateFields(gomock.Any(), uint(1), "n", "n").Return(&models.Book{ID: 1, OwnerID: 1, Title: "n", Author: "n"}, nil)
 
 	mockCache := cache.NewMockCache(ctrl)
 	mockCache.EXPECT().Incr(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewIntResult(1, nil)).Times(1)
@@ -557,8 +559,8 @@ func TestDeleteBookBumpsListCacheGen(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := repository.NewMockBookPersistence(ctrl)
-	mockStore.EXPECT().FirstByID(uint(1)).Return(&models.Book{ID: 1, OwnerID: 1, Title: "del", Author: "me"}, nil)
-	mockStore.EXPECT().DeleteByID(uint(1)).Return(nil)
+	mockStore.EXPECT().FirstByID(gomock.Any(), uint(1)).Return(&models.Book{ID: 1, OwnerID: 1, Title: "del", Author: "me"}, nil)
+	mockStore.EXPECT().DeleteByID(gomock.Any(), uint(1)).Return(nil)
 
 	mockCache := cache.NewMockCache(ctrl)
 	mockCache.EXPECT().Incr(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewIntResult(1, nil)).Times(1)
@@ -604,7 +606,7 @@ func TestDeleteBookNotFound(t *testing.T) {
 	r := gin.Default()
 	r.DELETE("/book/:id", withBookActor(1), h.DeleteBook)
 
-	mockStore.EXPECT().FirstByID(uint(1)).Return(nil, repository.ErrNotFound)
+	mockStore.EXPECT().FirstByID(gomock.Any(), uint(1)).Return(nil, repository.ErrNotFound)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest(http.MethodDelete, "/book/1", nil)
@@ -661,7 +663,7 @@ func TestCreateBook(t *testing.T) {
 		t.Fatalf("Failed to marshal input book data: %v", err)
 	}
 
-	mockStore.EXPECT().Create(gomock.Any()).Return(nil)
+	mockStore.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 
 	mockCache.EXPECT().Incr(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewIntResult(1, nil))
 
@@ -695,7 +697,7 @@ func TestFindBook(t *testing.T) {
 		Author: "Robert Griesemer",
 	}
 
-	mockStore.EXPECT().FirstByID(uint(1)).Return(&expectedBook, nil).Times(1)
+	mockStore.EXPECT().FirstByID(gomock.Any(), uint(1)).Return(&expectedBook, nil).Times(1)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/book/1", nil)
@@ -723,7 +725,7 @@ func TestFindBookNotFound(t *testing.T) {
 	r := gin.Default()
 	r.GET("/book/:id", h.FindBook)
 
-	mockStore.EXPECT().FirstByID(uint(1)).Return(nil, repository.ErrNotFound)
+	mockStore.EXPECT().FirstByID(gomock.Any(), uint(1)).Return(nil, repository.ErrNotFound)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/book/1", nil)
@@ -763,8 +765,8 @@ func TestDeleteBook(t *testing.T) {
 	r := gin.Default()
 	r.DELETE("/book/:id", withBookActor(1), h.DeleteBook)
 
-	mockStore.EXPECT().FirstByID(uint(1)).Return(&models.Book{ID: 1, OwnerID: 1, Title: "t", Author: "a"}, nil).Times(1)
-	mockStore.EXPECT().DeleteByID(uint(1)).Return(nil).Times(1)
+	mockStore.EXPECT().FirstByID(gomock.Any(), uint(1)).Return(&models.Book{ID: 1, OwnerID: 1, Title: "t", Author: "a"}, nil).Times(1)
+	mockStore.EXPECT().DeleteByID(gomock.Any(), uint(1)).Return(nil).Times(1)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest(http.MethodDelete, "/book/1", nil)
@@ -786,8 +788,8 @@ func TestDeleteBookDatabaseErrorOnDelete(t *testing.T) {
 	r.DELETE("/book/:id", withBookActor(1), h.DeleteBook)
 
 	delErr := errors.New("delete failed")
-	mockStore.EXPECT().FirstByID(uint(1)).Return(&models.Book{ID: 1, OwnerID: 1}, nil).Times(1)
-	mockStore.EXPECT().DeleteByID(uint(1)).Return(delErr).Times(1)
+	mockStore.EXPECT().FirstByID(gomock.Any(), uint(1)).Return(&models.Book{ID: 1, OwnerID: 1}, nil).Times(1)
+	mockStore.EXPECT().DeleteByID(gomock.Any(), uint(1)).Return(delErr).Times(1)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodDelete, "/book/1", nil)
@@ -1015,9 +1017,9 @@ func TestFindBooksFiltersAndSort(t *testing.T) {
 
 	pool := pgtest.Pool(t)
 	store := repository.NewSQLCBookStore(pool)
-	require.NoError(t, store.Create(&models.Book{OwnerID: 1, Title: "Go in Action", Author: "Kennedy"}))
-	require.NoError(t, store.Create(&models.Book{OwnerID: 1, Title: "Rust Book", Author: "Matsakis"}))
-	require.NoError(t, store.Create(&models.Book{OwnerID: 2, Title: "Go Patterns", Author: "Kennedy"}))
+	require.NoError(t, store.Create(context.Background(), &models.Book{OwnerID: 1, Title: "Go in Action", Author: "Kennedy"}))
+	require.NoError(t, store.Create(context.Background(), &models.Book{OwnerID: 1, Title: "Rust Book", Author: "Matsakis"}))
+	require.NoError(t, store.Create(context.Background(), &models.Book{OwnerID: 2, Title: "Go Patterns", Author: "Kennedy"}))
 
 	q := repository.BookListQuery{
 		Offset: 0, Limit: 10, TitleLike: "go", AuthorLike: "kennedy",
@@ -1059,8 +1061,8 @@ func TestFindBooksFilterCacheIsolation(t *testing.T) {
 
 	pool := pgtest.Pool(t)
 	store := repository.NewSQLCBookStore(pool)
-	require.NoError(t, store.Create(&models.Book{OwnerID: 1, Title: "Alpha", Author: "a"}))
-	require.NoError(t, store.Create(&models.Book{OwnerID: 1, Title: "Beta", Author: "b"}))
+	require.NoError(t, store.Create(context.Background(), &models.Book{OwnerID: 1, Title: "Alpha", Author: "a"}))
+	require.NoError(t, store.Create(context.Background(), &models.Book{OwnerID: 1, Title: "Beta", Author: "b"}))
 
 	qGo := defaultBookListQuery(0, 10)
 	qGo.TitleLike = "alpha"

@@ -69,9 +69,23 @@ func getenvPositiveDuration(key string, def time.Duration) time.Duration {
 	return d
 }
 
-// applyPoolConfig sets pgxpool pool sizing from POSTGRES_* env vars (with sane
-// defaults). MinConns is capped at MaxConns. The pgxpool equivalents of the old
-// database/sql knobs: MaxConns, MinConns, MaxConnLifetime, MaxConnIdleTime.
+// applyPoolConfig sets pgxpool sizing from POSTGRES_* env vars (with sane
+// defaults). The mapping to the old database/sql knobs is deliberate and not 1:1,
+// because pgxpool's model differs:
+//
+//   - POSTGRES_MAX_OPEN_CONNS -> MaxConns: hard ceiling on total connections
+//     (same meaning as sql.DB.SetMaxOpenConns).
+//   - POSTGRES_MAX_IDLE_CONNS -> MinIdleConns: keep at least this many *idle*
+//     connections ready. database/sql's SetMaxIdleConns was a ceiling on idle
+//     connections; pgxpool has no idle ceiling (idle connections are reaped by
+//     MaxConnIdleTime), so MinIdleConns ("keep some idle ready") is the closest
+//     analog. MinConns — a pool-wide floor pgxpool actively maintains via its
+//     health-check loop — is intentionally left at 0 so a quiet service can drain
+//     to zero connections, matching the old idle behavior.
+//   - POSTGRES_CONN_MAX_LIFETIME -> MaxConnLifetime (same as SetConnMaxLifetime).
+//   - POSTGRES_CONN_MAX_IDLE_TIME -> MaxConnIdleTime (same as SetConnMaxIdleTime).
+//
+// MinIdleConns is capped at MaxConns.
 func applyPoolConfig(cfg *pgxpool.Config) {
 	maxOpen := getenvPositiveInt("POSTGRES_MAX_OPEN_CONNS", defaultPostgresMaxOpenConns)
 	minIdle := getenvPositiveInt("POSTGRES_MAX_IDLE_CONNS", defaultPostgresMaxIdleConns)
@@ -79,7 +93,7 @@ func applyPoolConfig(cfg *pgxpool.Config) {
 		minIdle = maxOpen
 	}
 	cfg.MaxConns = clampToInt32(maxOpen)
-	cfg.MinConns = clampToInt32(minIdle)
+	cfg.MinIdleConns = clampToInt32(minIdle)
 	cfg.MaxConnLifetime = getenvPositiveDuration("POSTGRES_CONN_MAX_LIFETIME", defaultPostgresConnMaxLifetime)
 	cfg.MaxConnIdleTime = getenvPositiveDuration("POSTGRES_CONN_MAX_IDLE_TIME", defaultPostgresConnMaxIdleTime)
 }

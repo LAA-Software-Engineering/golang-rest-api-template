@@ -62,9 +62,7 @@ func bookFromDB(b dbsqlc.Book) models.Book {
 // List builds a parameterized query for the optional filters and the allowlisted
 // sort/order, then paginates. Dynamic sort/filter cannot be expressed as a single
 // static sqlc query, so this one method is hand-written pgx.
-func (s *SQLCBookStore) List(q BookListQuery) ([]models.Book, error) {
-	ctx := context.Background()
-
+func (s *SQLCBookStore) List(ctx context.Context, q BookListQuery) ([]models.Book, error) {
 	var sb strings.Builder
 	sb.WriteString("SELECT id, owner_id, title, author, created_at, updated_at FROM books")
 
@@ -137,8 +135,8 @@ func (s *SQLCBookStore) List(q BookListQuery) ([]models.Book, error) {
 	return out, nil
 }
 
-func (s *SQLCBookStore) Create(book *models.Book) error {
-	row, err := s.q.CreateBook(context.Background(), dbsqlc.CreateBookParams{
+func (s *SQLCBookStore) Create(ctx context.Context, book *models.Book) error {
+	row, err := s.q.CreateBook(ctx, dbsqlc.CreateBookParams{
 		OwnerID: toInt64(book.OwnerID),
 		Title:   book.Title,
 		Author:  book.Author,
@@ -150,8 +148,8 @@ func (s *SQLCBookStore) Create(book *models.Book) error {
 	return nil
 }
 
-func (s *SQLCBookStore) FirstByID(id uint) (*models.Book, error) {
-	row, err := s.q.GetBook(context.Background(), toInt64(id))
+func (s *SQLCBookStore) FirstByID(ctx context.Context, id uint) (*models.Book, error) {
+	row, err := s.q.GetBook(ctx, toInt64(id))
 	if err != nil {
 		return nil, mapNotFound(err)
 	}
@@ -159,8 +157,8 @@ func (s *SQLCBookStore) FirstByID(id uint) (*models.Book, error) {
 	return &b, nil
 }
 
-func (s *SQLCBookStore) UpdateFields(id uint, title, author string) (*models.Book, error) {
-	row, err := s.q.UpdateBookFields(context.Background(), dbsqlc.UpdateBookFieldsParams{
+func (s *SQLCBookStore) UpdateFields(ctx context.Context, id uint, title, author string) (*models.Book, error) {
+	row, err := s.q.UpdateBookFields(ctx, dbsqlc.UpdateBookFieldsParams{
 		ID:     toInt64(id),
 		Title:  title,
 		Author: author,
@@ -173,11 +171,11 @@ func (s *SQLCBookStore) UpdateFields(id uint, title, author string) (*models.Boo
 }
 
 // PatchFields updates only non-nil pointer fields (partial update).
-func (s *SQLCBookStore) PatchFields(id uint, title, author *string) (*models.Book, error) {
+func (s *SQLCBookStore) PatchFields(ctx context.Context, id uint, title, author *string) (*models.Book, error) {
 	if title == nil && author == nil {
-		return s.FirstByID(id)
+		return s.FirstByID(ctx, id)
 	}
-	row, err := s.q.PatchBookFields(context.Background(), dbsqlc.PatchBookFieldsParams{
+	row, err := s.q.PatchBookFields(ctx, dbsqlc.PatchBookFieldsParams{
 		ID:     toInt64(id),
 		Title:  title,
 		Author: author,
@@ -189,8 +187,8 @@ func (s *SQLCBookStore) PatchFields(id uint, title, author *string) (*models.Boo
 	return &b, nil
 }
 
-func (s *SQLCBookStore) DeleteByID(id uint) error {
-	n, err := s.q.DeleteBook(context.Background(), toInt64(id))
+func (s *SQLCBookStore) DeleteByID(ctx context.Context, id uint) error {
+	n, err := s.q.DeleteBook(ctx, toInt64(id))
 	if err != nil {
 		return err
 	}

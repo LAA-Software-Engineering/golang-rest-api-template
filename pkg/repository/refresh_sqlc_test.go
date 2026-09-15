@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -28,10 +29,10 @@ func TestSQLCRefreshTokenStoreLifecycle(t *testing.T) {
 		FamilyID:  "family-1",
 		ExpiresAt: now.Add(time.Hour),
 	}
-	require.NoError(t, store.Create(row))
+	require.NoError(t, store.Create(context.Background(), row))
 	assert.NotZero(t, row.ID)
 
-	found, err := store.FindByHash("abc123hash")
+	found, err := store.FindByHash(context.Background(), "abc123hash")
 	require.NoError(t, err)
 	assert.Equal(t, uint(1), found.UserID)
 
@@ -41,46 +42,46 @@ func TestSQLCRefreshTokenStoreLifecycle(t *testing.T) {
 		FamilyID:  "family-1",
 		ExpiresAt: now.Add(time.Hour),
 	}
-	require.NoError(t, store.RotateAtomically(found.ID, now, next))
+	require.NoError(t, store.RotateAtomically(context.Background(), found.ID, now, next))
 
-	found, err = store.FindByHash("abc123hash")
+	found, err = store.FindByHash(context.Background(), "abc123hash")
 	require.NoError(t, err)
 	require.NotNil(t, found.ConsumedAt)
 
-	_, err = store.FindByHash("next-hash")
+	_, err = store.FindByHash(context.Background(), "next-hash")
 	require.NoError(t, err)
 
-	err = store.RotateAtomically(found.ID, now, &models.RefreshToken{
+	err = store.RotateAtomically(context.Background(), found.ID, now, &models.RefreshToken{
 		UserID: 1, TokenHash: "again", FamilyID: "family-1", ExpiresAt: now.Add(time.Hour),
 	})
 	assert.ErrorIs(t, err, ErrRefreshAlreadyConsumed)
 
-	require.NoError(t, store.RevokeFamily("family-1", now))
-	found, err = store.FindByHash("abc123hash")
+	require.NoError(t, store.RevokeFamily(context.Background(), "family-1", now))
+	found, err = store.FindByHash(context.Background(), "abc123hash")
 	require.NoError(t, err)
 	require.NotNil(t, found.RevokedAt)
 }
 
 func TestSQLCRefreshTokenFindByHashNotFound(t *testing.T) {
 	store := newRefreshStore(t)
-	_, err := store.FindByHash("missing")
+	_, err := store.FindByHash(context.Background(), "missing")
 	assert.True(t, IsNotFound(err))
 }
 
 func TestSQLCRefreshTokenRevokeAllForUser(t *testing.T) {
 	store := newRefreshStore(t)
 	now := time.Now().UTC().Truncate(time.Second)
-	require.NoError(t, store.Create(&models.RefreshToken{
+	require.NoError(t, store.Create(context.Background(), &models.RefreshToken{
 		UserID: 7, TokenHash: "u7-a", FamilyID: "f-a", ExpiresAt: now.Add(time.Hour),
 	}))
-	require.NoError(t, store.Create(&models.RefreshToken{
+	require.NoError(t, store.Create(context.Background(), &models.RefreshToken{
 		UserID: 7, TokenHash: "u7-b", FamilyID: "f-b", ExpiresAt: now.Add(time.Hour),
 	}))
 
-	require.NoError(t, store.RevokeAllForUser(7, now))
+	require.NoError(t, store.RevokeAllForUser(context.Background(), 7, now))
 
 	for _, h := range []string{"u7-a", "u7-b"} {
-		row, err := store.FindByHash(h)
+		row, err := store.FindByHash(context.Background(), h)
 		require.NoError(t, err)
 		require.NotNil(t, row.RevokedAt)
 	}
@@ -92,7 +93,7 @@ func TestSQLCRefreshTokenRotateAtomicallyConcurrent(t *testing.T) {
 	row := &models.RefreshToken{
 		UserID: 1, TokenHash: "race-hash", FamilyID: "fam-race", ExpiresAt: now.Add(time.Hour),
 	}
-	require.NoError(t, store.Create(row))
+	require.NoError(t, store.Create(context.Background(), row))
 
 	var wg sync.WaitGroup
 	errs := make(chan error, 8)
@@ -107,7 +108,7 @@ func TestSQLCRefreshTokenRotateAtomicallyConcurrent(t *testing.T) {
 				FamilyID:  "fam-race",
 				ExpiresAt: now.Add(time.Hour),
 			}
-			errs <- store.RotateAtomically(row.ID, now, next)
+			errs <- store.RotateAtomically(context.Background(), row.ID, now, next)
 		}()
 	}
 	wg.Wait()

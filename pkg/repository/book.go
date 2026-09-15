@@ -1,6 +1,10 @@
 package repository
 
-import "golang-rest-api-template/pkg/models"
+import (
+	"context"
+
+	"golang-rest-api-template/pkg/models"
+)
 
 //go:generate go run -mod=mod go.uber.org/mock/mockgen@v0.6.0 -destination=mock_persistence.go -package=repository golang-rest-api-template/pkg/repository BookPersistence,UserPersistence
 
@@ -17,10 +21,10 @@ type BookListQuery struct {
 
 // BookPersistence is persistence for books without HTTP or Gin.
 type BookPersistence interface {
-	List(q BookListQuery) ([]models.Book, error)
-	Create(book *models.Book) error
-	FirstByID(id uint) (*models.Book, error)
-	UpdateFields(id uint, title, author string) (*models.Book, error)
-	PatchFields(id uint, title, author *string) (*models.Book, error)
-	DeleteByID(id uint) error
+	List(ctx context.Context, q BookListQuery) ([]models.Book, error)
+	Create(ctx context.Context, book *models.Book) error
+	FirstByID(ctx context.Context, id uint) (*models.Book, error)
+	UpdateFields(ctx context.Context, id uint, title, author string) (*models.Book, error)
+	PatchFields(ctx context.Context, id uint, title, author *string) (*models.Book, error)
+	DeleteByID(ctx context.Context, id uint) error
 }

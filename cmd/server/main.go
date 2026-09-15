@@ -86,11 +86,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("redis: %v", err)
 	}
-	db := database.NewDatabase()
-	if db == nil {
-		log.Fatal("database: could not connect or migrate (see logs above)")
-	}
-	defer db.Close()
 	mongo, err := database.SetupMongoDB()
 	if err != nil {
 		log.Fatalf("mongo: %v", err)
@@ -104,6 +99,15 @@ func main() {
 			log.Printf("logger sync: %v", err)
 		}
 	}()
+
+	// Open the database last among the fatal-on-error setup steps so its deferred
+	// Close is not silently skipped by an earlier log.Fatalf (which calls os.Exit
+	// and runs no defers).
+	db := database.NewDatabase()
+	if db == nil {
+		log.Fatal("database: could not connect or migrate (see logs above)")
+	}
+	defer db.Close()
 
 	// Gin mode comes from GIN_MODE (debug | release | test); see gin.EnvGinMode.
 	// Gin's init already applied os.Getenv("GIN_MODE"); do not override here.
