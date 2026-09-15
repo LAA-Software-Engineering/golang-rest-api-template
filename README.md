@@ -129,6 +129,7 @@ golang-rest-api-template/
 │  │  ├── event.go           # Event, Envelope, versioned payloads, Publisher iface
 │  │  ├── noop.go            # NopPublisher (default; no publishing)
 │  │  ├── metrics.go         # domain_events_published_total
+│  │  ├── driver             # EVENTS_DRIVER selection (NewFromEnv)
 │  │  └── kafka              # Kafka-backed Publisher (KAFKA_* only)
 │  ├── middleware
 │  │  ├── api_key.go

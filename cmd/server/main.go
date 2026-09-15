@@ -7,6 +7,7 @@ import (
 	"golang-rest-api-template/pkg/auth"
 	"golang-rest-api-template/pkg/cache"
 	"golang-rest-api-template/pkg/database"
+	eventsdriver "golang-rest-api-template/pkg/events/driver"
 	"golang-rest-api-template/pkg/middleware"
 	"golang-rest-api-template/pkg/tracing"
 	"log"
@@ -90,7 +91,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("mongo: %v", err)
 	}
-	publisher, err := buildPublisher()
+	publisher, err := eventsdriver.NewFromEnv()
 	if err != nil {
 		log.Fatalf("events: %v", err)
 	}

@@ -51,9 +51,11 @@ unavailable broker adds up to `KAFKA_PUBLISH_TIMEOUT` (default `2s`) to every
 | `KAFKA_TOPIC_PREFIX` | `app` | Topic is `<prefix>.books`. |
 | `KAFKA_PUBLISH_TIMEOUT` | `2s` | Per-publish timeout. |
 
-Driver selection lives in `cmd/server` (`buildPublisher`). The `pkg/events/kafka`
-adapter only knows about `KAFKA_*` settings — it does not know that `none` exists —
-so Kafka stays a cleanly removable adapter.
+Driver selection lives in `pkg/events/driver` (`NewFromEnv`), the one place that
+knows which backends exist. `pkg/events` stays backend-agnostic and the
+`pkg/events/kafka` adapter only knows about `KAFKA_*` settings — it does not know
+that `none` exists — so Kafka stays a cleanly removable adapter (removing it means
+editing only the switch in `pkg/events/driver`).
 
 ## The contract (what consumers depend on)
 

@@ -1,4 +1,9 @@
-package main
+// Package driver selects and constructs a concrete events.Publisher from
+// configuration (EVENTS_DRIVER). It is the single place that knows which event
+// backends exist, deliberately kept separate from pkg/events so that package
+// stays backend-agnostic and from pkg/events/kafka so that adapter stays cleanly
+// removable: deleting the kafka adapter only requires editing the switch here.
+package driver
 
 import (
 	"fmt"
@@ -6,22 +11,19 @@ import (
 	"strings"
 
 	"golang-rest-api-template/pkg/events"
-	eventskafka "golang-rest-api-template/pkg/events/kafka"
+	"golang-rest-api-template/pkg/events/kafka"
 )
 
-// buildPublisher selects the domain-event publisher from EVENTS_DRIVER. This
-// switch is the single place that knows which backends exist, so it lives at the
-// composition root (cmd/server) rather than in pkg/events or the kafka adapter:
-// pkg/events stays backend-agnostic and pkg/events/kafka stays cleanly removable.
+// NewFromEnv builds the domain-event publisher selected by EVENTS_DRIVER.
 //
 //	EVENTS_DRIVER unset|none -> events.NopPublisher (default; no publishing)
 //	EVENTS_DRIVER=kafka       -> Kafka producer from KAFKA_* + SERVICE_NAME
-func buildPublisher() (events.Publisher, error) {
+func NewFromEnv() (events.Publisher, error) {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("EVENTS_DRIVER"))) {
 	case "", "none":
 		return events.NopPublisher{}, nil
 	case "kafka":
-		cfg, err := eventskafka.ConfigFromEnv()
+		cfg, err := kafka.ConfigFromEnv()
 		if err != nil {
 			return nil, err
 		}
@@ -29,7 +31,7 @@ func buildPublisher() (events.Publisher, error) {
 		if source == "" {
 			source = "golang-rest-api-template"
 		}
-		return eventskafka.New(cfg, source), nil
+		return kafka.New(cfg, source), nil
 	default:
 		return nil, fmt.Errorf("unsupported EVENTS_DRIVER %q (want \"none\" or \"kafka\")", os.Getenv("EVENTS_DRIVER"))
 	}
