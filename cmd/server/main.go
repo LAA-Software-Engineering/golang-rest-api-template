@@ -7,6 +7,7 @@ import (
 	"golang-rest-api-template/pkg/auth"
 	"golang-rest-api-template/pkg/cache"
 	"golang-rest-api-template/pkg/database"
+	eventsdriver "golang-rest-api-template/pkg/events/driver"
 	"golang-rest-api-template/pkg/middleware"
 	"golang-rest-api-template/pkg/tracing"
 	"log"
@@ -90,6 +91,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("mongo: %v", err)
 	}
+	publisher, err := eventsdriver.NewFromEnv()
+	if err != nil {
+		log.Fatalf("events: %v", err)
+	}
+	defer func() {
+		if err := publisher.Close(); err != nil {
+			log.Printf("events publisher close: %v", err)
+		}
+	}()
 	logger, err := zap.NewProduction()
 	if err != nil {
 		log.Fatalf("logger: %v", err)
@@ -113,7 +123,7 @@ func main() {
 	// Gin's init already applied os.Getenv("GIN_MODE"); do not override here.
 	// Use GIN_MODE=release in production so Security/XSS middleware run (pkg/api/router.go).
 
-	r := api.NewRouter(logger, mongo, db, redisClient)
+	r := api.NewRouter(logger, mongo, db, redisClient, publisher)
 
 	const (
 		serverAddr          = ":8001"

@@ -26,6 +26,13 @@ services:
       MONGODB_URI: mongodb://mongo:27017
       # Enables HSTS/CSP and XSS middleware in pkg/api/router.go (Gin release mode).
       GIN_MODE: release
+      # Optional domain event publishing. Defaults to "none" (no Kafka needed).
+      # To enable: `EVENTS_DRIVER=kafka docker compose --profile kafka up`.
+      EVENTS_DRIVER: ${EVENTS_DRIVER:-none}
+      SERVICE_NAME: ${SERVICE_NAME:-golang-rest-api-template}
+      KAFKA_BROKERS: ${KAFKA_BROKERS:-kafka:9092}
+      KAFKA_TOPIC_PREFIX: ${KAFKA_TOPIC_PREFIX:-app}
+      KAFKA_PUBLISH_TIMEOUT: ${KAFKA_PUBLISH_TIMEOUT:-2s}
 
   db:
     image: postgres:14.17-alpine
@@ -74,6 +81,37 @@ services:
       timeout: 5s
       retries: 20
       start_period: 10s
+
+  # Optional: single-node Kafka (KRaft, no ZooKeeper). Opt-in via the "kafka"
+  # profile so the default `docker compose up` stays lean and Kafka-free:
+  #   EVENTS_DRIVER=kafka docker compose --profile kafka up
+  # In-cluster clients (the backend) use kafka:9092; host clients (the example
+  # consumer via `go run ./examples/kafka-consumer`) use localhost:29092.
+  kafka:
+    image: apache/kafka:3.9.0
+    container_name: dockerKafka
+    profiles: ["kafka"]
+    ports:
+      - "127.0.0.1:29092:29092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: INTERNAL://:9092,CONTROLLER://:9093,EXTERNAL://:29092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
 
 volumes:
   mongo_data:

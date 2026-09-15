@@ -7,8 +7,10 @@ import (
 
 	"golang-rest-api-template/pkg/auth"
 	"golang-rest-api-template/pkg/cache"
+	"golang-rest-api-template/pkg/events"
 	"golang-rest-api-template/pkg/middleware"
 	"golang-rest-api-template/pkg/repository"
+	"golang-rest-api-template/pkg/service"
 
 	docs "golang-rest-api-template/docs"
 
@@ -21,11 +23,14 @@ import (
 )
 
 // NewRouter builds the Gin engine with middleware, Swagger, and API routes.
-func NewRouter(logger *zap.Logger, mongoCollection *mongo.Collection, db *pgxpool.Pool, redisClient cache.Cache) *gin.Engine {
+// publisher is the optional domain-event sink; pass events.NopPublisher{} (or
+// nil) to disable event publishing.
+func NewRouter(logger *zap.Logger, mongoCollection *mongo.Collection, db *pgxpool.Pool, redisClient cache.Cache, publisher events.Publisher) *gin.Engine {
 	denylist := auth.NewTokenDenylistFromEnv(redisClient)
 	jwtAuth := middleware.JWTAuth(denylist)
 
-	books := NewBookHandler(repository.NewSQLCBookStore(db), redisClient)
+	bookService := service.NewBookService(repository.NewSQLCBookStore(db), redisClient, publisher)
+	books := NewBookHandler(bookService)
 	users := NewUserHandler(
 		repository.NewSQLCUserStore(db),
 		repository.NewSQLCRefreshTokenStore(db),
