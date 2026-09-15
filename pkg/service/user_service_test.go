@@ -17,7 +17,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 )
 
 type fakeUserStore struct {
@@ -26,21 +25,21 @@ type fakeUserStore struct {
 	createFn   func(user *models.User) error
 }
 
-func (f *fakeUserStore) FindByUsername(username string) (*models.User, error) {
+func (f *fakeUserStore) FindByUsername(_ context.Context, username string) (*models.User, error) {
 	if f.findFn != nil {
 		return f.findFn(username)
 	}
 	return nil, nil
 }
 
-func (f *fakeUserStore) FindByID(id uint) (*models.User, error) {
+func (f *fakeUserStore) FindByID(_ context.Context, id uint) (*models.User, error) {
 	if f.findByIDFn != nil {
 		return f.findByIDFn(id)
 	}
-	return nil, gorm.ErrRecordNotFound
+	return nil, repository.ErrNotFound
 }
 
-func (f *fakeUserStore) Create(user *models.User) error {
+func (f *fakeUserStore) Create(_ context.Context, user *models.User) error {
 	if f.createFn != nil {
 		return f.createFn(user)
 	}
@@ -57,7 +56,7 @@ func newMemRefreshStore() *memRefreshStore {
 	return &memRefreshStore{byHash: make(map[string]*models.RefreshToken)}
 }
 
-func (m *memRefreshStore) Create(token *models.RefreshToken) error {
+func (m *memRefreshStore) Create(_ context.Context, token *models.RefreshToken) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.nextID++
@@ -67,18 +66,18 @@ func (m *memRefreshStore) Create(token *models.RefreshToken) error {
 	return nil
 }
 
-func (m *memRefreshStore) FindByHash(tokenHash string) (*models.RefreshToken, error) {
+func (m *memRefreshStore) FindByHash(_ context.Context, tokenHash string) (*models.RefreshToken, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	t, ok := m.byHash[tokenHash]
 	if !ok {
-		return nil, gorm.ErrRecordNotFound
+		return nil, repository.ErrNotFound
 	}
 	cp := *t
 	return &cp, nil
 }
 
-func (m *memRefreshStore) RotateAtomically(oldID uint, at time.Time, next *models.RefreshToken) error {
+func (m *memRefreshStore) RotateAtomically(_ context.Context, oldID uint, at time.Time, next *models.RefreshToken) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var old *models.RefreshToken
@@ -89,7 +88,7 @@ func (m *memRefreshStore) RotateAtomically(oldID uint, at time.Time, next *model
 		}
 	}
 	if old == nil {
-		return gorm.ErrRecordNotFound
+		return repository.ErrNotFound
 	}
 	if old.ConsumedAt != nil || old.RevokedAt != nil {
 		return repository.ErrRefreshAlreadyConsumed
@@ -102,7 +101,7 @@ func (m *memRefreshStore) RotateAtomically(oldID uint, at time.Time, next *model
 	return nil
 }
 
-func (m *memRefreshStore) RevokeFamily(familyID string, at time.Time) error {
+func (m *memRefreshStore) RevokeFamily(_ context.Context, familyID string, at time.Time) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, t := range m.byHash {
@@ -113,7 +112,7 @@ func (m *memRefreshStore) RevokeFamily(familyID string, at time.Time) error {
 	return nil
 }
 
-func (m *memRefreshStore) RevokeAllForUser(userID uint, at time.Time) error {
+func (m *memRefreshStore) RevokeAllForUser(_ context.Context, userID uint, at time.Time) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, t := range m.byHash {
@@ -131,7 +130,7 @@ func testUserService(users repository.UserPersistence, refresh repository.Refres
 func TestUserServiceLoginUserNotFound(t *testing.T) {
 	store := &fakeUserStore{
 		findFn: func(username string) (*models.User, error) {
-			return nil, gorm.ErrRecordNotFound
+			return nil, repository.ErrNotFound
 		},
 	}
 	svc := testUserService(store, newMemRefreshStore())
@@ -247,7 +246,7 @@ func TestUserServiceRefreshRotationAndReuse(t *testing.T) {
 			if id == user.ID {
 				return user, nil
 			}
-			return nil, gorm.ErrRecordNotFound
+			return nil, repository.ErrNotFound
 		},
 	}
 	refresh := newMemRefreshStore()
@@ -319,11 +318,11 @@ type flakyRevokeStore struct {
 	revokeErr error
 }
 
-func (f *flakyRevokeStore) RevokeFamily(familyID string, at time.Time) error {
+func (f *flakyRevokeStore) RevokeFamily(ctx context.Context, familyID string, at time.Time) error {
 	if f.revokeErr != nil {
 		return f.revokeErr
 	}
-	return f.memRefreshStore.RevokeFamily(familyID, at)
+	return f.memRefreshStore.RevokeFamily(ctx, familyID, at)
 }
 
 func TestUserServiceRefreshReusePropagatesRevokeFamilyError(t *testing.T) {
@@ -366,7 +365,7 @@ func TestUserServiceLogoutRevokesRefresh(t *testing.T) {
 			if id == user.ID {
 				return user, nil
 			}
-			return nil, gorm.ErrRecordNotFound
+			return nil, repository.ErrNotFound
 		},
 	}
 	refresh := newMemRefreshStore()
@@ -467,7 +466,7 @@ func TestUserServiceRegisterSetsUserRole(t *testing.T) {
 func TestUserServiceRegisterConflictDuplicatedKey(t *testing.T) {
 	store := &fakeUserStore{
 		createFn: func(user *models.User) error {
-			return fmt.Errorf("%w: %v", repository.ErrUserUsernameConflict, gorm.ErrDuplicatedKey)
+			return fmt.Errorf("%w: %v", repository.ErrUserUsernameConflict, errors.New("duplicate key value violates unique constraint"))
 		},
 	}
 	svc := testUserService(store, newMemRefreshStore())

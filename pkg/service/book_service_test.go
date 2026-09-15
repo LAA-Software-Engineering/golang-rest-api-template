@@ -27,42 +27,42 @@ type fakeBookStore struct {
 	deleteFn func(id uint) error
 }
 
-func (f *fakeBookStore) List(q repository.BookListQuery) ([]models.Book, error) {
+func (f *fakeBookStore) List(_ context.Context, q repository.BookListQuery) ([]models.Book, error) {
 	if f.listFn != nil {
 		return f.listFn(q)
 	}
 	return nil, nil
 }
 
-func (f *fakeBookStore) Create(book *models.Book) error {
+func (f *fakeBookStore) Create(_ context.Context, book *models.Book) error {
 	if f.createFn != nil {
 		return f.createFn(book)
 	}
 	return nil
 }
 
-func (f *fakeBookStore) FirstByID(id uint) (*models.Book, error) {
+func (f *fakeBookStore) FirstByID(_ context.Context, id uint) (*models.Book, error) {
 	if f.firstFn != nil {
 		return f.firstFn(id)
 	}
 	return nil, nil
 }
 
-func (f *fakeBookStore) UpdateFields(id uint, title, author string) (*models.Book, error) {
+func (f *fakeBookStore) UpdateFields(_ context.Context, id uint, title, author string) (*models.Book, error) {
 	if f.updateFn != nil {
 		return f.updateFn(id, title, author)
 	}
 	return nil, nil
 }
 
-func (f *fakeBookStore) PatchFields(id uint, title, author *string) (*models.Book, error) {
+func (f *fakeBookStore) PatchFields(_ context.Context, id uint, title, author *string) (*models.Book, error) {
 	if f.patchFn != nil {
 		return f.patchFn(id, title, author)
 	}
 	return nil, nil
 }
 
-func (f *fakeBookStore) DeleteByID(id uint) error {
+func (f *fakeBookStore) DeleteByID(_ context.Context, id uint) error {
 	if f.deleteFn != nil {
 		return f.deleteFn(id)
 	}

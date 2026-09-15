@@ -1,29 +1,49 @@
 package database
 
 import (
+	"math"
 	"testing"
 	"time"
 
-	"golang-rest-api-template/pkg/models"
-
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
+	"github.com/stretchr/testify/require"
 )
 
-func setupSQLiteDB(t *testing.T) *gorm.DB {
-	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
-	assert.NoError(t, err)
-
-	err = db.AutoMigrate(&models.Book{}, &models.User{}, &models.RefreshToken{})
-	assert.NoError(t, err)
-
-	return db
+func TestClampToInt32(t *testing.T) {
+	assert.Equal(t, int32(0), clampToInt32(0))
+	assert.Equal(t, int32(25), clampToInt32(25))
+	assert.Equal(t, int32(math.MaxInt32), clampToInt32(math.MaxInt32))
+	assert.Equal(t, int32(math.MaxInt32), clampToInt32(math.MaxInt32+1))
+	assert.Equal(t, int32(0), clampToInt32(-5))
 }
 
-func TestConfigureConnPoolSQLite(t *testing.T) {
-	db := setupSQLiteDB(t)
-	assert.NoError(t, configureConnPool(db))
+func TestApplyPoolConfigDefaults(t *testing.T) {
+	cfg, err := pgxpool.ParseConfig("postgres://u:p@localhost:5432/db")
+	require.NoError(t, err)
+
+	applyPoolConfig(cfg)
+
+	assert.Equal(t, int32(defaultPostgresMaxOpenConns), cfg.MaxConns)
+	assert.Equal(t, int32(defaultPostgresMaxIdleConns), cfg.MinIdleConns)
+	assert.Equal(t, defaultPostgresConnMaxLifetime, cfg.MaxConnLifetime)
+	assert.Equal(t, defaultPostgresConnMaxIdleTime, cfg.MaxConnIdleTime)
+}
+
+func TestApplyPoolConfigFromEnv(t *testing.T) {
+	t.Setenv("POSTGRES_MAX_OPEN_CONNS", "10")
+	t.Setenv("POSTGRES_MAX_IDLE_CONNS", "50") // capped to max open
+	t.Setenv("POSTGRES_CONN_MAX_LIFETIME", "2h")
+	t.Setenv("POSTGRES_CONN_MAX_IDLE_TIME", "1m")
+
+	cfg, err := pgxpool.ParseConfig("postgres://u:p@localhost:5432/db")
+	require.NoError(t, err)
+	applyPoolConfig(cfg)
+
+	assert.Equal(t, int32(10), cfg.MaxConns)
+	assert.Equal(t, int32(10), cfg.MinIdleConns, "idle should be capped at max open")
+	assert.Equal(t, 2*time.Hour, cfg.MaxConnLifetime)
+	assert.Equal(t, time.Minute, cfg.MaxConnIdleTime)
 }
 
 func TestGetenvPositiveInt(t *testing.T) {

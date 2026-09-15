@@ -5,28 +5,27 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"golang-rest-api-template/pkg/cache"
-	"golang-rest-api-template/pkg/middleware"
-	"golang-rest-api-template/pkg/models"
-	"golang-rest-api-template/pkg/repository"
-	"golang-rest-api-template/pkg/service"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"gorm.io/gorm"
-
-	"github.com/go-redis/redis/v8"
+	"golang-rest-api-template/internal/pgtest"
+	"golang-rest-api-template/pkg/cache"
+	"golang-rest-api-template/pkg/middleware"
+	"golang-rest-api-template/pkg/models"
+	"golang-rest-api-template/pkg/repository"
+	"golang-rest-api-template/pkg/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-redis/redis/v8"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
-	"gorm.io/driver/sqlite"
 )
 
 // withBookActor injects the authenticated user id as JWTAuth would (for handler tests).
@@ -40,6 +39,42 @@ func withBookActor(userID uint) gin.HandlerFunc {
 
 func defaultBookListQuery(offset, limit int) repository.BookListQuery {
 	return repository.BookListQuery{Offset: offset, Limit: limit, Sort: "id", Order: "asc"}
+}
+
+// fakeBookStore is a BookPersistence stub that counts List calls. It replaces the
+// GORM query-callback counters used previously to assert singleflight / list-cache
+// coalescing at the service layer, without needing a real database.
+type fakeBookStore struct {
+	listCalls atomic.Int32
+	listDelay time.Duration
+	books     []models.Book
+}
+
+func (f *fakeBookStore) List(context.Context, repository.BookListQuery) ([]models.Book, error) {
+	f.listCalls.Add(1)
+	if f.listDelay > 0 {
+		time.Sleep(f.listDelay)
+	}
+	return f.books, nil
+}
+func (f *fakeBookStore) Create(context.Context, *models.Book) error { return nil }
+func (f *fakeBookStore) FirstByID(context.Context, uint) (*models.Book, error) {
+	return nil, repository.ErrNotFound
+}
+func (f *fakeBookStore) UpdateFields(context.Context, uint, string, string) (*models.Book, error) {
+	return nil, nil
+}
+func (f *fakeBookStore) PatchFields(context.Context, uint, *string, *string) (*models.Book, error) {
+	return nil, nil
+}
+func (f *fakeBookStore) DeleteByID(context.Context, uint) error { return nil }
+
+// seedBook inserts a book via the persistence layer and returns its stored form.
+func seedBook(t *testing.T, pool *pgxpool.Pool, b models.Book) models.Book {
+	t.Helper()
+	store := repository.NewSQLCBookStore(pool)
+	require.NoError(t, store.Create(context.Background(), &b))
+	return b
 }
 
 func TestNewBookHandler(t *testing.T) {
@@ -63,12 +98,10 @@ func TestHealthcheck(t *testing.T) {
 
 	h := NewBookHandler(mockStore, mockCache)
 
-	// Set up Gin
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 
-	// Call the actual Healthcheck method
 	h.Healthcheck(c)
 
 	assert.Equal(t, http.StatusOK, recorder.Code)
@@ -168,24 +201,16 @@ func TestFindBooksLimitBelowOne(t *testing.T) {
 }
 
 func TestFindBooksLimitCappedAtMax(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "cap_limit.sqlite")
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AutoMigrate(&models.Book{}); err != nil {
-		t.Fatal(err)
-	}
+	pool := pgtest.Pool(t)
+	store := repository.NewSQLCBookStore(pool)
 	for i := 0; i < 120; i++ {
-		if err := db.Create(&models.Book{OwnerID: 1, Title: "b" + strconv.Itoa(i), Author: "a"}).Error; err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, store.Create(context.Background(), &models.Book{OwnerID: 1, Title: "b" + strconv.Itoa(i), Author: "a"}))
 	}
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	mockCache := cache.NewMockCache(ctrl)
-	h := NewBookHandler(repository.NewGormBookStore(db), mockCache)
+	h := NewBookHandler(store, mockCache)
 
 	gomock.InOrder(
 		mockCache.EXPECT().Get(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewStringResult("", redis.Nil)),
@@ -228,7 +253,7 @@ func TestCreateBookDatabaseError(t *testing.T) {
 	}
 
 	dbErr := errors.New("db create failed")
-	mockStore.EXPECT().Create(gomock.Any()).Return(dbErr)
+	mockStore.EXPECT().Create(gomock.Any(), gomock.Any()).Return(dbErr)
 
 	w := httptest.NewRecorder()
 	req, err := http.NewRequest("POST", "/books", bytes.NewBuffer(requestBody))
@@ -298,7 +323,7 @@ func TestCreateBookCacheIncrError(t *testing.T) {
 	inputBook := models.CreateBook{Title: "New Book", Author: "New Author"}
 	requestBody, _ := json.Marshal(inputBook)
 
-	mockStore.EXPECT().Create(gomock.Any()).Return(nil)
+	mockStore.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 	mockCache.EXPECT().Incr(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewIntResult(0, errors.New("incr error")))
 
 	w := httptest.NewRecorder()
@@ -348,7 +373,7 @@ func TestUpdateBookNotFound(t *testing.T) {
 	updateInput := models.ReplaceBook{Title: "New Title", Author: "New Author"}
 	requestBody, _ := json.Marshal(updateInput)
 
-	mockStore.EXPECT().FirstByID(uint(1)).Return(nil, gorm.ErrRecordNotFound)
+	mockStore.EXPECT().FirstByID(gomock.Any(), uint(1)).Return(nil, repository.ErrNotFound)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("PUT", "/book/1", bytes.NewBuffer(requestBody))
@@ -360,17 +385,9 @@ func TestUpdateBookNotFound(t *testing.T) {
 }
 
 func TestUpdateBookForbiddenWrongOwner(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AutoMigrate(&models.Book{}); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Create(&models.Book{OwnerID: 1, Title: "mine", Author: "a"}).Error; err != nil {
-		t.Fatal(err)
-	}
-	h := NewBookHandler(repository.NewGormBookStore(db), nil)
+	pool := pgtest.Pool(t)
+	seedBook(t, pool, models.Book{OwnerID: 1, Title: "mine", Author: "a"})
+	h := NewBookHandler(repository.NewSQLCBookStore(pool), nil)
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
 	r.PUT("/book/:id", withBookActor(2), h.UpdateBook)
@@ -436,19 +453,9 @@ func TestPutBookRequiresTitleAndAuthor(t *testing.T) {
 }
 
 func TestPatchBookTitleOnly(t *testing.T) {
-	// Isolated DB: shared in-memory SQLite is reused across tests and races under parallel pkg/api runs.
-	dbPath := filepath.Join(t.TempDir(), "patch_book_title.sqlite")
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AutoMigrate(&models.Book{}); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Create(&models.Book{OwnerID: 1, Title: "old", Author: "same"}).Error; err != nil {
-		t.Fatal(err)
-	}
-	h := NewBookHandler(repository.NewGormBookStore(db), nil)
+	pool := pgtest.Pool(t)
+	seedBook(t, pool, models.Book{OwnerID: 1, Title: "old", Author: "same"})
+	h := NewBookHandler(repository.NewSQLCBookStore(pool), nil)
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
 	r.PATCH("/book/:id", withBookActor(1), h.PatchBook)
@@ -469,25 +476,9 @@ func TestFindBooksDatabaseError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	dbPath := filepath.Join(t.TempDir(), "findbooks_db_err.sqlite")
-	sqlDB, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := sqlDB.AutoMigrate(&models.Book{}); err != nil {
-		t.Fatal(err)
-	}
-
-	raw, err := sqlDB.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := raw.Close(); err != nil {
-		t.Fatal(err)
-	}
-
+	mockStore := repository.NewMockBookPersistence(ctrl)
 	mockCache := cache.NewMockCache(ctrl)
-	h := NewBookHandler(repository.NewGormBookStore(sqlDB), mockCache)
+	h := NewBookHandler(mockStore, mockCache)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -497,6 +488,7 @@ func TestFindBooksDatabaseError(t *testing.T) {
 		mockCache.EXPECT().Get(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewStringResult("", redis.Nil)),
 		mockCache.EXPECT().Get(gomock.Any(), service.BooksListDataCacheKey(0, defaultBookListQuery(0, 10))).Return(redis.NewStringResult("", redis.Nil)),
 	)
+	mockStore.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, errors.New("db list failed"))
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/books?offset=0&limit=10", nil)
@@ -507,30 +499,14 @@ func TestFindBooksDatabaseError(t *testing.T) {
 }
 
 func TestUpdateBookDatabaseErrorOnUpdates(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AutoMigrate(&models.Book{}); err != nil {
-		t.Fatal(err)
-	}
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
 
-	existingBook := models.Book{OwnerID: 1, Title: "Old Title", Author: "Old Author"}
-	if err := db.Create(&existingBook).Error; err != nil {
-		t.Fatal(err)
-	}
+	mockStore := repository.NewMockBookPersistence(ctrl)
+	mockStore.EXPECT().FirstByID(gomock.Any(), uint(1)).Return(&models.Book{ID: 1, OwnerID: 1, Title: "Old Title", Author: "Old Author"}, nil)
+	mockStore.EXPECT().UpdateFields(gomock.Any(), uint(1), "New Title", "New Author").Return(nil, errors.New("forced update failure"))
 
-	if err := db.Exec(`
-		CREATE TRIGGER tr_books_abort_update
-		BEFORE UPDATE ON books
-		BEGIN
-			SELECT RAISE(ABORT, 'forced update failure');
-		END
-	`).Error; err != nil {
-		t.Fatal(err)
-	}
-
-	h := NewBookHandler(repository.NewGormBookStore(db), nil)
+	h := NewBookHandler(mockStore, nil)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -552,25 +528,17 @@ func TestUpdateBookDatabaseErrorOnUpdates(t *testing.T) {
 }
 
 func TestUpdateBookBumpsListCacheGen(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "update_bump.sqlite")
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AutoMigrate(&models.Book{}); err != nil {
-		t.Fatal(err)
-	}
-	b := models.Book{OwnerID: 1, Title: "t", Author: "a"}
-	if err := db.Create(&b).Error; err != nil {
-		t.Fatal(err)
-	}
-
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
+
+	mockStore := repository.NewMockBookPersistence(ctrl)
+	mockStore.EXPECT().FirstByID(gomock.Any(), uint(1)).Return(&models.Book{ID: 1, OwnerID: 1, Title: "t", Author: "a"}, nil)
+	mockStore.EXPECT().UpdateFields(gomock.Any(), uint(1), "n", "n").Return(&models.Book{ID: 1, OwnerID: 1, Title: "n", Author: "n"}, nil)
+
 	mockCache := cache.NewMockCache(ctrl)
 	mockCache.EXPECT().Incr(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewIntResult(1, nil)).Times(1)
 
-	h := NewBookHandler(repository.NewGormBookStore(db), mockCache)
+	h := NewBookHandler(mockStore, mockCache)
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
 	r.PUT("/book/:id", withBookActor(1), h.UpdateBook)
@@ -587,25 +555,17 @@ func TestUpdateBookBumpsListCacheGen(t *testing.T) {
 }
 
 func TestDeleteBookBumpsListCacheGen(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "delete_bump.sqlite")
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AutoMigrate(&models.Book{}); err != nil {
-		t.Fatal(err)
-	}
-	b := models.Book{OwnerID: 1, Title: "del", Author: "me"}
-	if err := db.Create(&b).Error; err != nil {
-		t.Fatal(err)
-	}
-
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
+
+	mockStore := repository.NewMockBookPersistence(ctrl)
+	mockStore.EXPECT().FirstByID(gomock.Any(), uint(1)).Return(&models.Book{ID: 1, OwnerID: 1, Title: "del", Author: "me"}, nil)
+	mockStore.EXPECT().DeleteByID(gomock.Any(), uint(1)).Return(nil)
+
 	mockCache := cache.NewMockCache(ctrl)
 	mockCache.EXPECT().Incr(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewIntResult(1, nil)).Times(1)
 
-	h := NewBookHandler(repository.NewGormBookStore(db), mockCache)
+	h := NewBookHandler(mockStore, mockCache)
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
 	r.DELETE("/book/:id", withBookActor(1), h.DeleteBook)
@@ -646,7 +606,7 @@ func TestDeleteBookNotFound(t *testing.T) {
 	r := gin.Default()
 	r.DELETE("/book/:id", withBookActor(1), h.DeleteBook)
 
-	mockStore.EXPECT().FirstByID(uint(1)).Return(nil, gorm.ErrRecordNotFound)
+	mockStore.EXPECT().FirstByID(gomock.Any(), uint(1)).Return(nil, repository.ErrNotFound)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest(http.MethodDelete, "/book/1", nil)
@@ -657,23 +617,14 @@ func TestDeleteBookNotFound(t *testing.T) {
 }
 
 func TestFindBooks(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "findbooks_list.sqlite")
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AutoMigrate(&models.Book{}); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Create(&models.Book{OwnerID: 1, Title: "Book One", Author: "Author One"}).Error; err != nil {
-		t.Fatal(err)
-	}
+	pool := pgtest.Pool(t)
+	seedBook(t, pool, models.Book{OwnerID: 1, Title: "Book One", Author: "Author One"})
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	mockCache := cache.NewMockCache(ctrl)
-	h := NewBookHandler(repository.NewGormBookStore(db), mockCache)
+	h := NewBookHandler(repository.NewSQLCBookStore(pool), mockCache)
 
 	gomock.InOrder(
 		mockCache.EXPECT().Get(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewStringResult("0", nil)),
@@ -702,19 +653,17 @@ func TestCreateBook(t *testing.T) {
 
 	h := NewBookHandler(mockStore, mockCache)
 
-	// Set up Gin
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
 	r.POST("/books", withBookActor(1), h.CreateBook)
 
-	// Example data for the test
 	inputBook := models.CreateBook{Title: "New Book", Author: "New Author"}
 	requestBody, err := json.Marshal(inputBook)
 	if err != nil {
 		t.Fatalf("Failed to marshal input book data: %v", err)
 	}
 
-	mockStore.EXPECT().Create(gomock.Any()).Return(nil)
+	mockStore.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 
 	mockCache.EXPECT().Incr(gomock.Any(), service.BooksListCacheGenKey).Return(redis.NewIntResult(1, nil))
 
@@ -725,10 +674,8 @@ func TestCreateBook(t *testing.T) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	// Serve the HTTP request
 	r.ServeHTTP(w, req)
 
-	// Assertions to check the response
 	assert.Equal(t, http.StatusCreated, w.Code, "Expected HTTP status code 201")
 	assert.Contains(t, w.Body.String(), "New Book", "Response body should contain the book title")
 }
@@ -740,26 +687,22 @@ func TestFindBook(t *testing.T) {
 	mockStore := repository.NewMockBookPersistence(ctrl)
 	h := NewBookHandler(mockStore, nil)
 
-	// Set up Gin
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
 	r.GET("/book/:id", h.FindBook)
 
-	// Prepare test data
 	expectedBook := models.Book{
 		ID:     1,
 		Title:  "Effective Go",
 		Author: "Robert Griesemer",
 	}
 
-	mockStore.EXPECT().FirstByID(uint(1)).Return(&expectedBook, nil).Times(1)
+	mockStore.EXPECT().FirstByID(gomock.Any(), uint(1)).Return(&expectedBook, nil).Times(1)
 
-	// Perform the request
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/book/1", nil)
 	r.ServeHTTP(w, req)
 
-	// Assert response
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var response struct {
@@ -782,7 +725,7 @@ func TestFindBookNotFound(t *testing.T) {
 	r := gin.Default()
 	r.GET("/book/:id", h.FindBook)
 
-	mockStore.EXPECT().FirstByID(uint(1)).Return(nil, gorm.ErrRecordNotFound)
+	mockStore.EXPECT().FirstByID(gomock.Any(), uint(1)).Return(nil, repository.ErrNotFound)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/book/1", nil)
@@ -815,17 +758,15 @@ func TestDeleteBook(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	// Create mock for the database
 	mockStore := repository.NewMockBookPersistence(ctrl)
 	h := NewBookHandler(mockStore, nil)
 
-	// Set up Gin for testing
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
 	r.DELETE("/book/:id", withBookActor(1), h.DeleteBook)
 
-	mockStore.EXPECT().FirstByID(uint(1)).Return(&models.Book{ID: 1, OwnerID: 1, Title: "t", Author: "a"}, nil).Times(1)
-	mockStore.EXPECT().DeleteByID(uint(1)).Return(nil).Times(1)
+	mockStore.EXPECT().FirstByID(gomock.Any(), uint(1)).Return(&models.Book{ID: 1, OwnerID: 1, Title: "t", Author: "a"}, nil).Times(1)
+	mockStore.EXPECT().DeleteByID(gomock.Any(), uint(1)).Return(nil).Times(1)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest(http.MethodDelete, "/book/1", nil)
@@ -847,8 +788,8 @@ func TestDeleteBookDatabaseErrorOnDelete(t *testing.T) {
 	r.DELETE("/book/:id", withBookActor(1), h.DeleteBook)
 
 	delErr := errors.New("delete failed")
-	mockStore.EXPECT().FirstByID(uint(1)).Return(&models.Book{ID: 1, OwnerID: 1}, nil).Times(1)
-	mockStore.EXPECT().DeleteByID(uint(1)).Return(delErr).Times(1)
+	mockStore.EXPECT().FirstByID(gomock.Any(), uint(1)).Return(&models.Book{ID: 1, OwnerID: 1}, nil).Times(1)
+	mockStore.EXPECT().DeleteByID(gomock.Any(), uint(1)).Return(delErr).Times(1)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodDelete, "/book/1", nil)
@@ -859,32 +800,16 @@ func TestDeleteBookDatabaseErrorOnDelete(t *testing.T) {
 }
 
 func TestFindBooksSingleflightCoalescesDB(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "singleflight.sqlite")
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
+	store := &fakeBookStore{
+		listDelay: 50 * time.Millisecond,
+		books:     []models.Book{{ID: 1, OwnerID: 1, Title: "Coalesced", Author: "Author"}},
 	}
-	if err := db.AutoMigrate(&models.Book{}); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Create(&models.Book{OwnerID: 1, Title: "Coalesced", Author: "Author"}).Error; err != nil {
-		t.Fatal(err)
-	}
-
-	const cbName = "pkg/api:test_find_books_sf_counter"
-	var selectN atomic.Int32
-	if err := db.Callback().Query().After("gorm:query").Register(cbName, func(*gorm.DB) {
-		selectN.Add(1)
-	}); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Callback().Query().Remove(cbName) })
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	mockCache := cache.NewMockCache(ctrl)
-	h := NewBookHandler(repository.NewGormBookStore(db), mockCache)
+	h := NewBookHandler(store, mockCache)
 
 	const n = 50
 	dataKey := service.BooksListDataCacheKey(0, defaultBookListQuery(0, 10))
@@ -948,37 +873,18 @@ func TestFindBooksSingleflightCoalescesDB(t *testing.T) {
 		assert.Equal(t, http.StatusOK, code)
 	}
 
-	if got := selectN.Load(); got != 1 {
+	if got := store.listCalls.Load(); got != 1 {
 		t.Fatalf("expected exactly 1 coalesced DB query, got %d", got)
 	}
 }
 
 func TestFindBooksLeadingZerosShareListCache(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "leadzero.sqlite")
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AutoMigrate(&models.Book{}); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Create(&models.Book{OwnerID: 1, Title: "One", Author: "A"}).Error; err != nil {
-		t.Fatal(err)
-	}
-
-	const cbName = "pkg/api:test_leadzero_list_queries"
-	var queryN atomic.Int32
-	if err := db.Callback().Query().After("gorm:query").Register(cbName, func(*gorm.DB) {
-		queryN.Add(1)
-	}); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Callback().Query().Remove(cbName) })
+	store := &fakeBookStore{books: []models.Book{{ID: 1, OwnerID: 1, Title: "One", Author: "A"}}}
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	mockCache := cache.NewMockCache(ctrl)
-	h := NewBookHandler(repository.NewGormBookStore(db), mockCache)
+	h := NewBookHandler(store, mockCache)
 
 	dataKey := service.BooksListDataCacheKey(0, defaultBookListQuery(0, 10))
 	var cacheMu sync.Mutex
@@ -1031,7 +937,7 @@ func TestFindBooksLeadingZerosShareListCache(t *testing.T) {
 	r.ServeHTTP(w2, httptest.NewRequest(http.MethodGet, "/books?offset=0&limit=10", nil))
 	assert.Equal(t, http.StatusOK, w2.Code)
 
-	if got := queryN.Load(); got != 1 {
+	if got := store.listCalls.Load(); got != 1 {
 		t.Fatalf("expected one DB list query (second HTTP call hits same cache key), got %d", got)
 	}
 }
@@ -1055,12 +961,7 @@ func TestFindBooksSortCaseInsensitive(t *testing.T) {
 	defer ctrl.Finish()
 	mockCache := cache.NewMockCache(ctrl)
 
-	dbPath := filepath.Join(t.TempDir(), "findbooks_sort_case.sqlite")
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
-	assert.NoError(t, err)
-	assert.NoError(t, db.AutoMigrate(&models.Book{}))
-	store := repository.NewGormBookStore(db)
-	assert.NoError(t, store.Create(&models.Book{OwnerID: 1, Title: "A", Author: "x"}))
+	store := &fakeBookStore{books: []models.Book{{ID: 1, OwnerID: 1, Title: "A", Author: "x"}}}
 
 	q := defaultBookListQuery(0, 10)
 	q.Sort = "title"
@@ -1114,14 +1015,11 @@ func TestFindBooksFiltersAndSort(t *testing.T) {
 	defer ctrl.Finish()
 	mockCache := cache.NewMockCache(ctrl)
 
-	dbPath := filepath.Join(t.TempDir(), "findbooks_filter.sqlite")
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
-	assert.NoError(t, err)
-	assert.NoError(t, db.AutoMigrate(&models.Book{}))
-	store := repository.NewGormBookStore(db)
-	assert.NoError(t, store.Create(&models.Book{OwnerID: 1, Title: "Go in Action", Author: "Kennedy"}))
-	assert.NoError(t, store.Create(&models.Book{OwnerID: 1, Title: "Rust Book", Author: "Matsakis"}))
-	assert.NoError(t, store.Create(&models.Book{OwnerID: 2, Title: "Go Patterns", Author: "Kennedy"}))
+	pool := pgtest.Pool(t)
+	store := repository.NewSQLCBookStore(pool)
+	require.NoError(t, store.Create(context.Background(), &models.Book{OwnerID: 1, Title: "Go in Action", Author: "Kennedy"}))
+	require.NoError(t, store.Create(context.Background(), &models.Book{OwnerID: 1, Title: "Rust Book", Author: "Matsakis"}))
+	require.NoError(t, store.Create(context.Background(), &models.Book{OwnerID: 2, Title: "Go Patterns", Author: "Kennedy"}))
 
 	q := repository.BookListQuery{
 		Offset: 0, Limit: 10, TitleLike: "go", AuthorLike: "kennedy",
@@ -1161,13 +1059,10 @@ func TestFindBooksFilterCacheIsolation(t *testing.T) {
 	defer ctrl.Finish()
 	mockCache := cache.NewMockCache(ctrl)
 
-	dbPath := filepath.Join(t.TempDir(), "findbooks_cache_iso.sqlite")
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
-	assert.NoError(t, err)
-	assert.NoError(t, db.AutoMigrate(&models.Book{}))
-	store := repository.NewGormBookStore(db)
-	assert.NoError(t, store.Create(&models.Book{OwnerID: 1, Title: "Alpha", Author: "a"}))
-	assert.NoError(t, store.Create(&models.Book{OwnerID: 1, Title: "Beta", Author: "b"}))
+	pool := pgtest.Pool(t)
+	store := repository.NewSQLCBookStore(pool)
+	require.NoError(t, store.Create(context.Background(), &models.Book{OwnerID: 1, Title: "Alpha", Author: "a"}))
+	require.NoError(t, store.Create(context.Background(), &models.Book{OwnerID: 1, Title: "Beta", Author: "b"}))
 
 	qGo := defaultBookListQuery(0, 10)
 	qGo.TitleLike = "alpha"
