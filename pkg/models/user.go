@@ -46,10 +46,10 @@ type AdminMeBody struct {
 }
 
 type User struct {
-	ID        uint      `json:"id" gorm:"primary_key"`
-	Username  string    `json:"username" gorm:"unique"`
+	ID        uint      `json:"id"`
+	Username  string    `json:"username"`
 	Password  string    `json:"-"`
-	Role      string    `json:"role" gorm:"type:varchar(32);not null;default:'user'"`
-	CreatedAt time.Time `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt time.Time `json:"updated_at" gorm:"autoUpdateTime"`
+	Role      string    `json:"role"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }

@@ -13,7 +13,8 @@ RUN go install github.com/swaggo/swag/cmd/swag@v1.16.4
 
 RUN swag init -g ./cmd/server/main.go -o ./docs
 
-RUN CGO_ENABLED=1 go build -o /out/server ./cmd/server/main.go
+# Pure-Go build (no CGO): the stack uses pgx/sqlc for Postgres, no cgo SQLite driver.
+RUN CGO_ENABLED=0 go build -o /out/server ./cmd/server/main.go
 
 
 FROM debian:bookworm-slim AS runtime

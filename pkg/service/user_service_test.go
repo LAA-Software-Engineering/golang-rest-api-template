@@ -17,7 +17,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 )
 
 type fakeUserStore struct {
@@ -37,7 +36,7 @@ func (f *fakeUserStore) FindByID(id uint) (*models.User, error) {
 	if f.findByIDFn != nil {
 		return f.findByIDFn(id)
 	}
-	return nil, gorm.ErrRecordNotFound
+	return nil, repository.ErrNotFound
 }
 
 func (f *fakeUserStore) Create(user *models.User) error {
@@ -72,7 +71,7 @@ func (m *memRefreshStore) FindByHash(tokenHash string) (*models.RefreshToken, er
 	defer m.mu.Unlock()
 	t, ok := m.byHash[tokenHash]
 	if !ok {
-		return nil, gorm.ErrRecordNotFound
+		return nil, repository.ErrNotFound
 	}
 	cp := *t
 	return &cp, nil
@@ -89,7 +88,7 @@ func (m *memRefreshStore) RotateAtomically(oldID uint, at time.Time, next *model
 		}
 	}
 	if old == nil {
-		return gorm.ErrRecordNotFound
+		return repository.ErrNotFound
 	}
 	if old.ConsumedAt != nil || old.RevokedAt != nil {
 		return repository.ErrRefreshAlreadyConsumed
@@ -131,7 +130,7 @@ func testUserService(users repository.UserPersistence, refresh repository.Refres
 func TestUserServiceLoginUserNotFound(t *testing.T) {
 	store := &fakeUserStore{
 		findFn: func(username string) (*models.User, error) {
-			return nil, gorm.ErrRecordNotFound
+			return nil, repository.ErrNotFound
 		},
 	}
 	svc := testUserService(store, newMemRefreshStore())
@@ -247,7 +246,7 @@ func TestUserServiceRefreshRotationAndReuse(t *testing.T) {
 			if id == user.ID {
 				return user, nil
 			}
-			return nil, gorm.ErrRecordNotFound
+			return nil, repository.ErrNotFound
 		},
 	}
 	refresh := newMemRefreshStore()
@@ -366,7 +365,7 @@ func TestUserServiceLogoutRevokesRefresh(t *testing.T) {
 			if id == user.ID {
 				return user, nil
 			}
-			return nil, gorm.ErrRecordNotFound
+			return nil, repository.ErrNotFound
 		},
 	}
 	refresh := newMemRefreshStore()
@@ -467,7 +466,7 @@ func TestUserServiceRegisterSetsUserRole(t *testing.T) {
 func TestUserServiceRegisterConflictDuplicatedKey(t *testing.T) {
 	store := &fakeUserStore{
 		createFn: func(user *models.User) error {
-			return fmt.Errorf("%w: %v", repository.ErrUserUsernameConflict, gorm.ErrDuplicatedKey)
+			return fmt.Errorf("%w: %v", repository.ErrUserUsernameConflict, errors.New("duplicate key value violates unique constraint"))
 		},
 	}
 	svc := testUserService(store, newMemRefreshStore())

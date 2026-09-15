@@ -3,38 +3,48 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 
+	"golang-rest-api-template/internal/pgtest"
 	"golang-rest-api-template/pkg/auth"
 	"golang-rest-api-template/pkg/middleware"
 	"golang-rest-api-template/pkg/models"
 	"golang-rest-api-template/pkg/repository"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
 )
 
-func openUserTestDB(t *testing.T) *gorm.DB {
+func openUserTestDB(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "user.sqlite")), &gorm.Config{})
-	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&models.User{}, &models.RefreshToken{}))
-	return db
+	return pgtest.Pool(t)
 }
 
-func newTestUserHandler(db *gorm.DB) *userHandler {
+func newTestUserHandler(pool *pgxpool.Pool) *userHandler {
 	return NewUserHandler(
-		repository.NewGormUserStore(db),
-		repository.NewGormRefreshTokenStore(db),
+		repository.NewSQLCUserStore(pool),
+		repository.NewSQLCRefreshTokenStore(pool),
 		auth.NoopDenylist{},
 	)
+}
+
+// seedUser inserts a user with the given plaintext password (hashed) directly via
+// the persistence layer.
+func seedUser(t *testing.T, pool *pgxpool.Pool, username, plaintext string) {
+	t.Helper()
+	hashed, err := auth.HashPassword(plaintext)
+	require.NoError(t, err)
+	require.NoError(t, repository.NewSQLCUserStore(pool).Create(&models.User{
+		Username: username,
+		Password: hashed,
+		Role:     auth.RoleUser,
+	}))
 }
 
 func TestNewUserHandler(t *testing.T) {
@@ -51,16 +61,14 @@ func TestLoginHandlerSuccess(t *testing.T) {
 	t.Cleanup(func() { _ = auth.SetJWTSigningKey(prev) })
 	require.NoError(t, auth.SetJWTSigningKey(bytes.Repeat([]byte("k"), auth.MinJWTSecretKeyBytes)))
 
-	db := openUserTestDB(t)
-	h := newTestUserHandler(db)
+	pool := openUserTestDB(t)
+	h := newTestUserHandler(pool)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
 	r.POST("/login", h.LoginHandler)
 
-	hashedPassword, _ := auth.HashPassword("password")
-	user := models.User{Username: "testuser", Password: hashedPassword}
-	db.Create(&user)
+	seedUser(t, pool, "testuser", "password")
 
 	loginUser := models.LoginUser{Username: "testuser", Password: "password"}
 	requestBody, _ := json.Marshal(loginUser)
@@ -123,8 +131,8 @@ func TestLoginHandlerBindValidationLoginUser(t *testing.T) {
 }
 
 func TestLoginHandlerUserNotFound(t *testing.T) {
-	db := openUserTestDB(t)
-	h := newTestUserHandler(db)
+	pool := openUserTestDB(t)
+	h := newTestUserHandler(pool)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -143,16 +151,14 @@ func TestLoginHandlerUserNotFound(t *testing.T) {
 }
 
 func TestLoginHandlerWrongPassword(t *testing.T) {
-	db := openUserTestDB(t)
-	h := newTestUserHandler(db)
+	pool := openUserTestDB(t)
+	h := newTestUserHandler(pool)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
 	r.POST("/login", h.LoginHandler)
 
-	hashedPassword, _ := auth.HashPassword("correctpassword")
-	user := models.User{Username: "testuser", Password: hashedPassword}
-	db.Create(&user)
+	seedUser(t, pool, "testuser", "correctpassword")
 
 	loginUser := models.LoginUser{Username: "testuser", Password: "wrongpassword"}
 	requestBody, _ := json.Marshal(loginUser)
@@ -171,8 +177,8 @@ func TestRefreshAndLogoutHandlers(t *testing.T) {
 	t.Cleanup(func() { _ = auth.SetJWTSigningKey(prev) })
 	require.NoError(t, auth.SetJWTSigningKey(bytes.Repeat([]byte("k"), auth.MinJWTSecretKeyBytes)))
 
-	db := openUserTestDB(t)
-	h := newTestUserHandler(db)
+	pool := openUserTestDB(t)
+	h := newTestUserHandler(pool)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
@@ -180,8 +186,7 @@ func TestRefreshAndLogoutHandlers(t *testing.T) {
 	r.POST("/refresh", h.RefreshHandler)
 	r.POST("/logout", middleware.JWTAuth(auth.NoopDenylist{}), h.LogoutHandler)
 
-	hashedPassword, _ := auth.HashPassword("password")
-	require.NoError(t, db.Create(&models.User{Username: "refreshuser", Password: hashedPassword}).Error)
+	seedUser(t, pool, "refreshuser", "password")
 
 	loginBody, _ := json.Marshal(models.LoginUser{Username: "refreshuser", Password: "password"})
 	wLogin := httptest.NewRecorder()
@@ -257,7 +262,7 @@ func TestRegisterHandlerDBError(t *testing.T) {
 	loginUser := models.LoginUser{Username: "newuser", Password: "password"}
 	requestBody, _ := json.Marshal(loginUser)
 
-	mockUsers.EXPECT().Create(gomock.Any()).Return(gorm.ErrInvalidDB)
+	mockUsers.EXPECT().Create(gomock.Any()).Return(errors.New("internal-db-failure"))
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/register", bytes.NewBuffer(requestBody))
@@ -267,20 +272,13 @@ func TestRegisterHandlerDBError(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	body := w.Body.String()
 	assert.Contains(t, body, "Could not save user")
-	assert.NotContains(t, body, "ErrInvalidDB")
+	assert.NotContains(t, body, "internal-db-failure")
 }
 
 func TestRegisterHandlerDuplicateUsername(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "register_dup.sqlite")
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AutoMigrate(&models.User{}); err != nil {
-		t.Fatal(err)
-	}
+	pool := openUserTestDB(t)
 
-	h := NewUserHandler(repository.NewGormUserStore(db), nil, auth.NoopDenylist{})
+	h := NewUserHandler(repository.NewSQLCUserStore(pool), nil, auth.NoopDenylist{})
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
 	r.POST("/register", h.RegisterHandler)

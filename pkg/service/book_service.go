@@ -128,7 +128,7 @@ func (s *BookService) CreateBook(ctx context.Context, ownerID uint, title, autho
 	return book, nil
 }
 
-// GetBook returns a book by id or gorm.ErrRecordNotFound-compatible error from the store.
+// GetBook returns a book by id or a repository.ErrNotFound-compatible error from the store.
 func (s *BookService) GetBook(_ context.Context, id uint) (*models.Book, error) {
 	return s.store.FirstByID(id)
 }

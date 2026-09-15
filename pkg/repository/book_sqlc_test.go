@@ -4,30 +4,19 @@ import (
 	"sync"
 	"testing"
 
+	"golang-rest-api-template/internal/pgtest"
 	"golang-rest-api-template/pkg/models"
 
 	"github.com/stretchr/testify/assert"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
 )
 
-func testBookDB(t *testing.T) *gorm.DB {
+func newBookStore(t *testing.T) *SQLCBookStore {
 	t.Helper()
-	// Unique DSN per test so shared-cache in-memory DBs do not leak rows across tests.
-	dsn := "file:" + t.Name() + "?mode=memory&cache=shared"
-	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
-	if !assert.NoError(t, db.AutoMigrate(&models.Book{})) {
-		t.FailNow()
-	}
-	return db
+	return NewSQLCBookStore(pgtest.Pool(t))
 }
 
-func TestGormBookStoreListCreateFirstByID(t *testing.T) {
-	db := testBookDB(t)
-	s := NewGormBookStore(db)
+func TestSQLCBookStoreListCreateFirstByID(t *testing.T) {
+	s := newBookStore(t)
 
 	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "A", Author: "1"}))
 	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "B", Author: "2"}))
@@ -47,18 +36,16 @@ func TestGormBookStoreListCreateFirstByID(t *testing.T) {
 	assert.Equal(t, list[0].Title, got.Title)
 }
 
-func TestGormBookStoreFirstByIDNotFound(t *testing.T) {
-	db := testBookDB(t)
-	s := NewGormBookStore(db)
+func TestSQLCBookStoreFirstByIDNotFound(t *testing.T) {
+	s := newBookStore(t)
 
 	_, err := s.FirstByID(999)
 	assert.Error(t, err)
 	assert.True(t, IsBookNotFound(err))
 }
 
-func TestGormBookStoreListOffsetLimit(t *testing.T) {
-	db := testBookDB(t)
-	s := NewGormBookStore(db)
+func TestSQLCBookStoreListOffsetLimit(t *testing.T) {
+	s := newBookStore(t)
 	for i := 0; i < 5; i++ {
 		assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: string(rune('A' + i)), Author: "x"}))
 	}
@@ -70,9 +57,8 @@ func TestGormBookStoreListOffsetLimit(t *testing.T) {
 	assert.Len(t, page, 2)
 }
 
-func TestGormBookStoreListTitleLike(t *testing.T) {
-	db := testBookDB(t)
-	s := NewGormBookStore(db)
+func TestSQLCBookStoreListTitleLike(t *testing.T) {
+	s := newBookStore(t)
 	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "The Go Programming Language", Author: "Donovan"}))
 	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Clean Code", Author: "Martin"}))
 
@@ -86,9 +72,8 @@ func TestGormBookStoreListTitleLike(t *testing.T) {
 	assert.Equal(t, "The Go Programming Language", list[0].Title)
 }
 
-func TestGormBookStoreListAuthorLike(t *testing.T) {
-	db := testBookDB(t)
-	s := NewGormBookStore(db)
+func TestSQLCBookStoreListAuthorLike(t *testing.T) {
+	s := newBookStore(t)
 	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "A", Author: "Alice Smith"}))
 	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "B", Author: "Bob Jones"}))
 
@@ -102,9 +87,8 @@ func TestGormBookStoreListAuthorLike(t *testing.T) {
 	assert.Equal(t, "Alice Smith", list[0].Author)
 }
 
-func TestGormBookStoreListOwnerID(t *testing.T) {
-	db := testBookDB(t)
-	s := NewGormBookStore(db)
+func TestSQLCBookStoreListOwnerID(t *testing.T) {
+	s := newBookStore(t)
 	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "A", Author: "x"}))
 	assert.NoError(t, s.Create(&models.Book{OwnerID: 2, Title: "B", Author: "y"}))
 
@@ -119,9 +103,8 @@ func TestGormBookStoreListOwnerID(t *testing.T) {
 	assert.Equal(t, uint(2), list[0].OwnerID)
 }
 
-func TestGormBookStoreListSortDesc(t *testing.T) {
-	db := testBookDB(t)
-	s := NewGormBookStore(db)
+func TestSQLCBookStoreListSortDesc(t *testing.T) {
+	s := newBookStore(t)
 	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Alpha", Author: "z"}))
 	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Beta", Author: "a"}))
 
@@ -136,9 +119,8 @@ func TestGormBookStoreListSortDesc(t *testing.T) {
 	assert.Equal(t, "Alpha", list[1].Title)
 }
 
-func TestGormBookStoreListCombinedFiltersAndPagination(t *testing.T) {
-	db := testBookDB(t)
-	s := NewGormBookStore(db)
+func TestSQLCBookStoreListCombinedFiltersAndPagination(t *testing.T) {
+	s := newBookStore(t)
 	owner := uint(1)
 	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Go Basics", Author: "Ann"}))
 	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Go Advanced", Author: "Ann"}))
@@ -163,9 +145,8 @@ func TestGormBookStoreListCombinedFiltersAndPagination(t *testing.T) {
 	assert.Equal(t, "Go Basics", list[0].Title)
 }
 
-func TestGormBookStoreListLikeMetacharactersLiteral(t *testing.T) {
-	db := testBookDB(t)
-	s := NewGormBookStore(db)
+func TestSQLCBookStoreListLikeMetacharactersLiteral(t *testing.T) {
+	s := newBookStore(t)
 	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "100% Pure", Author: "x"}))
 	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "100 Pure", Author: "x"}))
 	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "under_score", Author: "y"}))
@@ -189,9 +170,8 @@ func TestGormBookStoreListLikeMetacharactersLiteral(t *testing.T) {
 	assert.Equal(t, "under_score", list[0].Title)
 }
 
-func TestGormBookStoreListStablePaginationOnTiedTitle(t *testing.T) {
-	db := testBookDB(t)
-	s := NewGormBookStore(db)
+func TestSQLCBookStoreListStablePaginationOnTiedTitle(t *testing.T) {
+	s := newBookStore(t)
 	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Same", Author: "a"}))
 	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Same", Author: "b"}))
 	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "Same", Author: "c"}))
@@ -218,9 +198,8 @@ func TestGormBookStoreListStablePaginationOnTiedTitle(t *testing.T) {
 	assert.True(t, page1[1].ID < page2[0].ID)
 }
 
-func TestGormBookStoreUpdateFields(t *testing.T) {
-	db := testBookDB(t)
-	s := NewGormBookStore(db)
+func TestSQLCBookStoreUpdateFields(t *testing.T) {
+	s := newBookStore(t)
 	b := &models.Book{OwnerID: 1, Title: "old", Author: "old"}
 	assert.NoError(t, s.Create(b))
 
@@ -238,18 +217,16 @@ func TestGormBookStoreUpdateFields(t *testing.T) {
 	assert.Equal(t, "newt", reloaded.Title)
 }
 
-func TestGormBookStoreUpdateFieldsNotFound(t *testing.T) {
-	db := testBookDB(t)
-	s := NewGormBookStore(db)
+func TestSQLCBookStoreUpdateFieldsNotFound(t *testing.T) {
+	s := newBookStore(t)
 
 	_, err := s.UpdateFields(42, "x", "y")
 	assert.Error(t, err)
 	assert.True(t, IsBookNotFound(err))
 }
 
-func TestGormBookStorePatchFieldsTitleOnly(t *testing.T) {
-	db := testBookDB(t)
-	s := NewGormBookStore(db)
+func TestSQLCBookStorePatchFieldsTitleOnly(t *testing.T) {
+	s := newBookStore(t)
 	b := &models.Book{OwnerID: 1, Title: "orig", Author: "keep"}
 	assert.NoError(t, s.Create(b))
 	newTitle := "patched"
@@ -267,9 +244,8 @@ func TestGormBookStorePatchFieldsTitleOnly(t *testing.T) {
 	assert.Equal(t, "keep", reloaded.Author)
 }
 
-func TestGormBookStorePatchFieldsAuthorOnly(t *testing.T) {
-	db := testBookDB(t)
-	s := NewGormBookStore(db)
+func TestSQLCBookStorePatchFieldsAuthorOnly(t *testing.T) {
+	s := newBookStore(t)
 	b := &models.Book{OwnerID: 1, Title: "keep", Author: "orig"}
 	assert.NoError(t, s.Create(b))
 	newAuthor := "new-author"
@@ -281,9 +257,20 @@ func TestGormBookStorePatchFieldsAuthorOnly(t *testing.T) {
 	assert.Equal(t, "new-author", out.Author)
 }
 
-func TestGormBookStoreDeleteByID(t *testing.T) {
-	db := testBookDB(t)
-	s := NewGormBookStore(db)
+func TestSQLCBookStorePatchFieldsNoChange(t *testing.T) {
+	s := newBookStore(t)
+	b := &models.Book{OwnerID: 1, Title: "keep", Author: "same"}
+	assert.NoError(t, s.Create(b))
+	out, err := s.PatchFields(b.ID, nil, nil)
+	if !assert.NoError(t, err) {
+		return
+	}
+	assert.Equal(t, "keep", out.Title)
+	assert.Equal(t, "same", out.Author)
+}
+
+func TestSQLCBookStoreDeleteByID(t *testing.T) {
+	s := newBookStore(t)
 	b := &models.Book{OwnerID: 1, Title: "gone", Author: "soon"}
 	assert.NoError(t, s.Create(b))
 
@@ -292,18 +279,16 @@ func TestGormBookStoreDeleteByID(t *testing.T) {
 	assert.True(t, IsBookNotFound(err))
 }
 
-func TestGormBookStoreDeleteByIDNotFound(t *testing.T) {
-	db := testBookDB(t)
-	s := NewGormBookStore(db)
+func TestSQLCBookStoreDeleteByIDNotFound(t *testing.T) {
+	s := newBookStore(t)
 
 	err := s.DeleteByID(99)
 	assert.Error(t, err)
 	assert.True(t, IsBookNotFound(err))
 }
 
-func TestGormBookStoreListConcurrent(t *testing.T) {
-	db := testBookDB(t)
-	s := NewGormBookStore(db)
+func TestSQLCBookStoreListConcurrent(t *testing.T) {
+	s := newBookStore(t)
 	assert.NoError(t, s.Create(&models.Book{OwnerID: 1, Title: "c", Author: "c"}))
 
 	var wg sync.WaitGroup

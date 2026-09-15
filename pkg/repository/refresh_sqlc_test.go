@@ -3,26 +3,24 @@ package repository
 import (
 	"errors"
 	"fmt"
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
+	"golang-rest-api-template/internal/pgtest"
 	"golang-rest-api-template/pkg/models"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
 )
 
-func TestGormRefreshTokenStoreLifecycle(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "refresh.sqlite")
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
-	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&models.RefreshToken{}))
+func newRefreshStore(t *testing.T) *SQLCRefreshTokenStore {
+	t.Helper()
+	return NewSQLCRefreshTokenStore(pgtest.Pool(t))
+}
 
-	store := NewGormRefreshTokenStore(db)
+func TestSQLCRefreshTokenStoreLifecycle(t *testing.T) {
+	store := newRefreshStore(t)
 	now := time.Now().UTC().Truncate(time.Second)
 	row := &models.RefreshToken{
 		UserID:    1,
@@ -63,18 +61,33 @@ func TestGormRefreshTokenStoreLifecycle(t *testing.T) {
 	require.NotNil(t, found.RevokedAt)
 }
 
-func TestGormRefreshTokenRotateAtomicallyConcurrent(t *testing.T) {
-	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
-	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
-	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&models.RefreshToken{}))
-	sqlDB, err := db.DB()
-	require.NoError(t, err)
-	// SQLite: single connection so conditional UPDATEs serialize. This checks
-	// RowsAffected contention at the API layer, not multi-connection Postgres races.
-	sqlDB.SetMaxOpenConns(1)
+func TestSQLCRefreshTokenFindByHashNotFound(t *testing.T) {
+	store := newRefreshStore(t)
+	_, err := store.FindByHash("missing")
+	assert.True(t, IsNotFound(err))
+}
 
-	store := NewGormRefreshTokenStore(db)
+func TestSQLCRefreshTokenRevokeAllForUser(t *testing.T) {
+	store := newRefreshStore(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	require.NoError(t, store.Create(&models.RefreshToken{
+		UserID: 7, TokenHash: "u7-a", FamilyID: "f-a", ExpiresAt: now.Add(time.Hour),
+	}))
+	require.NoError(t, store.Create(&models.RefreshToken{
+		UserID: 7, TokenHash: "u7-b", FamilyID: "f-b", ExpiresAt: now.Add(time.Hour),
+	}))
+
+	require.NoError(t, store.RevokeAllForUser(7, now))
+
+	for _, h := range []string{"u7-a", "u7-b"} {
+		row, err := store.FindByHash(h)
+		require.NoError(t, err)
+		require.NotNil(t, row.RevokedAt)
+	}
+}
+
+func TestSQLCRefreshTokenRotateAtomicallyConcurrent(t *testing.T) {
+	store := newRefreshStore(t)
 	now := time.Now().UTC().Truncate(time.Second)
 	row := &models.RefreshToken{
 		UserID: 1, TokenHash: "race-hash", FamilyID: "fam-race", ExpiresAt: now.Add(time.Hour),
@@ -113,10 +126,4 @@ func TestGormRefreshTokenRotateAtomicallyConcurrent(t *testing.T) {
 	}
 	assert.Equal(t, 1, okCount)
 	assert.Equal(t, 7, conflictCount)
-}
-
-func TestIsNotFound(t *testing.T) {
-	assert.True(t, IsNotFound(gorm.ErrRecordNotFound))
-	assert.True(t, IsUserNotFound(gorm.ErrRecordNotFound))
-	assert.False(t, IsNotFound(errors.New("other")))
 }

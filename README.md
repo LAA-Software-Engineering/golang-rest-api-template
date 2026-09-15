@@ -2,10 +2,49 @@
 
 [![license](https://img.shields.io/badge/license-MIT-green)](https://raw.githubusercontent.com/araujo88/golang-rest-api-template/main/LICENSE)
 [![build](https://github.com/araujo88/golang-rest-api-template/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/araujo88/golang-rest-api-template/actions/workflows/ci.yml)
+[![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![sqlc](https://img.shields.io/badge/db-sqlc%20%2B%20pgx-2596BE)](https://sqlc.dev)
+[![Gin](https://img.shields.io/badge/web-Gin-008ECF)](https://github.com/gin-gonic/gin)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](./CONTRIBUTING.md)
 
 ## Overview
 
-This repository provides a template for building a RESTful API using Go with features like JWT Authentication, rate limiting, Swagger documentation, and database operations using GORM. The application uses the Gin Gonic web framework and is containerized using Docker.
+This repository provides a template for building a RESTful API using Go with features like JWT Authentication, rate limiting, Swagger documentation, and type-safe database access using [sqlc](https://sqlc.dev) over [pgx](https://github.com/jackc/pgx). The application uses the Gin Gonic web framework and is containerized using Docker.
+
+## Quickstart
+
+Prerequisites: Go 1.26+, Docker, and Docker Compose.
+
+```bash
+git clone https://github.com/araujo88/golang-rest-api-template
+cd golang-rest-api-template
+
+# 1. Create your .env and set two distinct secrets (each >= 32 bytes).
+cp .env.example .env
+go run ./scripts/generate_key.go   # run twice; put the values in JWT_SECRET_KEY and API_SECRET_KEY
+
+# 2. Start Postgres, Redis, Mongo, and the API (Gin release mode).
+make up
+
+# 3. Verify.
+curl http://localhost:8001/livez              # -> 200 OK
+# Swagger UI: http://localhost:8001/swagger/index.html
+```
+
+The database schema is applied automatically at startup from [`pkg/database/schema.sql`](./pkg/database/schema.sql) — there is no separate migration step to run. See [Getting Started](#getting-started) for the full walkthrough and [Database schema and code generation](#database-schema-and-code-generation) for the sqlc workflow.
+
+## Tech stack
+
+| Concern | Library |
+| ------- | ------- |
+| HTTP framework | [Gin](https://github.com/gin-gonic/gin) |
+| PostgreSQL access | [pgx/v5](https://github.com/jackc/pgx) with [sqlc](https://sqlc.dev)-generated, type-safe queries |
+| Cache / rate limiting | [go-redis](https://github.com/redis/go-redis) |
+| Access-log store | [MongoDB Go driver](https://github.com/mongodb/mongo-go-driver) |
+| Auth | [golang-jwt](https://github.com/golang-jwt/jwt) + bcrypt |
+| Observability | [OpenTelemetry](https://opentelemetry.io) tracing, [Prometheus](https://prometheus.io) metrics |
+| API docs | [swaggo/swag](https://github.com/swaggo/swag) (Swagger / OpenAPI) |
+| Tests | [testify](https://github.com/stretchr/testify), [uber-go/mock](https://github.com/uber-go/mock), [testcontainers-go](https://golang.testcontainers.org) (ephemeral Postgres), pytest (E2E) |
 
 ## Features
 
@@ -15,7 +54,7 @@ This repository provides a template for building a RESTful API using Go with fea
 - Rate Limiting (per-client fixed window via Redis; see `RATE_LIMIT_*`).
 - Prometheus metrics on `/metrics` (see `METRICS_*`).
 - Swagger Documentation.
-- PostgreSQL database integration using GORM.
+- PostgreSQL database integration using sqlc-generated queries over pgx (schema in `pkg/database/schema.sql`, queries in `pkg/repository/queries/`; regenerate with `make sqlc-generate`).
 - Redis cache (book list invalidation bumps a generation counter; no Redis KEYS on the keyspace).
 - MongoDB for logging storage.
 - Optional OpenTelemetry tracing (OTLP), correlated with `X-Request-Id`.
@@ -39,13 +78,18 @@ golang-rest-api-template/
 ├── .env.example
 ├── .golangci.yml
 ├── docs
+│  ├── CONFIGURATION.md
 │  ├── docs.go
 │  ├── swagger.json
 │  └── swagger.yaml
 ├── go.mod
 ├── go.sum
+├── internal
+│  └── pgtest            # shared testcontainers Postgres helper for tests
+│     └── pgtest.go
 ├── LICENSE
 ├── Makefile
+├── sqlc.yaml            # sqlc code-generation config
 ├── pkg
 │  ├── api
 │  │  ├── books.go
@@ -74,7 +118,8 @@ golang-rest-api-template/
 │  │  ├── db_test.go
 │  │  ├── doc.go
 │  │  ├── mongo.go
-│  │  └── mongo_test.go
+│  │  ├── mongo_test.go
+│  │  └── schema.sql        # DDL applied at startup + sqlc schema input
 │  ├── middleware
 │  │  ├── api_key.go
 │  │  ├── api_key_test.go
@@ -102,6 +147,15 @@ golang-rest-api-template/
 │  │  ├── book.go
 │  │  ├── user.go
 │  │  └── user_test.go
+│  ├── repository
+│  │  ├── book.go            # BookPersistence interface (+ user.go, refresh.go)
+│  │  ├── book_sqlc.go       # sqlc-backed stores over pgx
+│  │  ├── dbsqlc             # generated code (do not edit by hand)
+│  │  ├── errors.go          # ErrNotFound / unique-conflict mapping
+│  │  └── queries            # *.sql query inputs for sqlc
+│  ├── service
+│  │  ├── book_service.go
+│  │  └── user_service.go
 │  └── tracing
 │     ├── config.go
 │     ├── config_test.go
@@ -123,6 +177,7 @@ golang-rest-api-template/
 - Go 1.26.8 or newer (see `go.mod`; aligns CI and Docker with `govulncheck` / patched stdlib)
 - Docker
 - Docker Compose
+- (Optional) [sqlc](https://docs.sqlc.dev/en/latest/overview/install.html) — only needed to regenerate database code after editing `pkg/database/schema.sql` or `pkg/repository/queries/*.sql`. The generated code is committed, so it is **not** required to build, test, or run. `make sqlc-generate` invokes a pinned version via `go run`, so a local install is optional.
 
 ### Installation
 
@@ -156,60 +211,29 @@ make up
 
 Please refer to the [Makefile](./Makefile) if you need to build in the local environment. The `run-local` target also requires a populated `.env` for those two variables.
 
-### Environment Variables
+### Database schema and code generation
 
-Copy [`.env.example`](./.env.example) to `.env`, adjust values for your environment, and load them into the process environment (for example `set -a && . ./.env && set +a` in Bash, or `docker compose --env-file .env up` so Compose picks up substitutions). **Do not commit `.env`.**
+The database schema lives in [`pkg/database/schema.sql`](./pkg/database/schema.sql) and is applied automatically at startup (idempotent `CREATE TABLE IF NOT EXISTS`), so there is no separate migration step. The type-safe query code in [`pkg/repository/dbsqlc/`](./pkg/repository/dbsqlc) is generated by [sqlc](https://sqlc.dev) from that schema plus the queries in [`pkg/repository/queries/`](./pkg/repository/queries) (config in [`sqlc.yaml`](./sqlc.yaml)).
 
-Names below match `os.Getenv` usage in this repository:
-
-| Variable | Purpose |
-| -------- | ------- |
-| `POSTGRES_HOST` | PostgreSQL hostname (e.g. `localhost` locally, service name in Compose) |
-| `POSTGRES_DB` | Database name |
-| `POSTGRES_USER` | Database user |
-| `POSTGRES_PASSWORD` | Database password |
-| `POSTGRES_PORT` | PostgreSQL port |
-| `REDIS_ADDR` | Optional full `host:port` for Redis; when set, overrides `REDIS_HOST` / `REDIS_PORT` (`pkg/cache/cache.go`) |
-| `REDIS_HOST` | Redis hostname when `REDIS_ADDR` is unset (default `127.0.0.1`) |
-| `REDIS_PORT` | Redis TCP port when `REDIS_ADDR` is unset (default `6379`) |
-| `REDIS_PASSWORD` | Redis `AUTH` password (optional) |
-| `REDIS_USERNAME` | Redis ACL username (optional; Redis 6+) |
-| `REDIS_DB` | Logical database index (default `0`) |
-| `REDIS_TLS` | Set `true` / `1` / `yes` / `on` to use TLS (`MinVersion` TLS 1.2) |
-| `REDIS_TLS_INSECURE` | Set `true` / `1` / `yes` / `on` to skip server certificate verification (**never in production**) |
-| `REDIS_DIAL_TIMEOUT` | Dial timeout (Go duration, default `5s`) |
-| `REDIS_READ_TIMEOUT` | Read timeout (default `3s`) |
-| `REDIS_WRITE_TIMEOUT` | Write timeout (default `3s`) |
-| `JWT_SECRET_KEY` | Secret for signing JWTs (`pkg/auth/auth.go`) |
-| `ACCESS_TOKEN_TTL` | Optional access JWT lifetime (Go duration; default `5m`) |
-| `REFRESH_TOKEN_TTL` | Optional opaque refresh token lifetime (Go duration; default `168h` / 7 days) |
-| `TOKEN_DENYLIST_ENABLED` | Optional Redis access-token denylist for logout (`true`/`false`; default on). When on: per-`jti` denylist plus per-user `revoke_before` on logout-all. When off or Redis is unavailable, reads fail open (tokens accepted); login/refresh/logout still work via Postgres. |
-| `BCRYPT_COST` | Optional bcrypt work factor for **new** password hashes (integer `10`–`31`; default **`12`**, was 14). Values below `10` clamp to `10` with a log line. See [#128](https://github.com/LAA-Software-Engineering/golang-rest-api-template/issues/128). |
-| `API_SECRET_KEY` | Secret compared to the `X-API-Key` header (`pkg/middleware/api_key.go`) |
-| `GIN_MODE` | Standard Gin variable: `debug` (default if unset), `release` (enables Security + XSS middleware in `pkg/api/router.go`), or `test` |
-| `GIN_TRUSTED_PROXIES` | Optional comma-separated CIDRs trusted for `X-Forwarded-For` / `ClientIP` (`pkg/api/router.go`). If unset, only the direct peer address is used. |
-| `REQUEST_MAX_BODY_BYTES` | Optional cap on JSON/body bytes for `POST`/`PUT`/`PATCH` (default `1048576`, i.e. 1 MiB; `pkg/middleware/max_body.go`). |
-| `REQUEST_CONTEXT_TIMEOUT` | Optional per-request deadline for **`/api/v1/**` only** (Go duration, e.g. `60s`); default `60s`. Set to `0`, `off`, or `none` to disable (`pkg/middleware/request_timeout.go`). Probes and Swagger are outside this group. |
-| `RATE_LIMIT_ENABLED` | Per-client rate limiting on/off (`true`/`false`; default on). Set `0`/`off`/`none` to disable (`pkg/middleware/rate_limit.go`). |
-| `RATE_LIMIT_REQUESTS` | Max requests per client per window (default `60`). |
-| `RATE_LIMIT_WINDOW` | Fixed window duration (Go duration, default `1m`). |
-| `RATE_LIMIT_BACKEND` | Counter store: `redis` (default, shared across instances) or `memory` (single process only). |
-| `METRICS_ENABLED` | Prometheus metrics on/off (`true`/`false`; default on). Set `0`/`off`/`none` to disable (`pkg/middleware/metrics.go`). |
-| `METRICS_PATH` | Scrape path for Prometheus (default `/metrics`). Must start with `/`. |
-| `OTEL_TRACES_ENABLED` | Opt-in OpenTelemetry tracing (`true` / `1` / `yes` / `on`). Default off (`pkg/tracing`). |
-| `OTEL_SERVICE_NAME` | Resource `service.name` for traces (default `golang-rest-api-template`). |
-| `OTEL_TRACES_EXPORTER` | Trace exporter when enabled: `otlp` (default), `stdout`, or `none`. |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP HTTP collector base URL (standard OpenTelemetry env; e.g. `http://localhost:4318`). |
-
-When tracing is enabled, each request gets a server span after `X-Request-Id` is assigned. The request id is recorded on the span as `http.request_id`, and access logs include `trace_id` / `span_id` when a valid span is present.
-
-To generate URL-safe random values for `JWT_SECRET_KEY` and `API_SECRET_KEY`, run:
+After changing the schema or any query, regenerate and commit the output:
 
 ```bash
-go run ./scripts/generate_key.go
+make sqlc-generate
 ```
 
-`docker-compose.yml` does **not** embed JWT or API secrets; they must come from `.env` or your shell environment so keys are not committed to the repository. The Compose file sets **`GIN_MODE=release`** for the API service so production-style security headers apply; override in `.env` if you need `debug` locally. Service images use **pinned tags** (Postgres, Redis, Mongo), **published ports bind to `127.0.0.1`** for local dev, and Postgres data uses a **named volume** (`postgres_data`, same pattern as `mongo_data`). Remove volumes with `docker compose down -v` when you want a fresh database.
+### Running tests
+
+```bash
+make test        # go test ./... -race -cover
+```
+
+Database-backed tests spin up an ephemeral PostgreSQL container via [testcontainers-go](https://golang.testcontainers.org), so a running **Docker daemon** is required. When Docker is unavailable, those tests skip (rather than fail); the rest of the suite still runs.
+
+### Environment Variables
+
+All environment variables and configuration notes live in **[`docs/CONFIGURATION.md`](./docs/CONFIGURATION.md)**.
+
+In short: copy [`.env.example`](./.env.example) to `.env`, set at least `JWT_SECRET_KEY` and `API_SECRET_KEY` (each **32 bytes or longer**), and load the file into the environment (for example `set -a && . ./.env && set +a`, or `docker compose --env-file .env up`). **Do not commit `.env`.**
 
 ### API Documentation
 

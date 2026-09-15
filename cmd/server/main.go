@@ -21,7 +21,7 @@ import (
 
 // @title           golang-rest-api-template
 // @version         1.0
-// @description     Go/Gin REST API template: books CRUD, register/login/refresh/logout, Redis-backed list cache and optional JWT denylist, Postgres via GORM, Mongo access logs, rate limiting, and Swagger.
+// @description     Go/Gin REST API template: books CRUD, register/login/refresh/logout, Redis-backed list cache and optional JWT denylist, Postgres via sqlc/pgx, Mongo access logs, rate limiting, and Swagger.
 // @termsOfService  http://swagger.io/terms/
 
 // @contact.name   API Support
@@ -90,6 +90,7 @@ func main() {
 	if db == nil {
 		log.Fatal("database: could not connect or migrate (see logs above)")
 	}
+	defer db.Close()
 	mongo, err := database.SetupMongoDB()
 	if err != nil {
 		log.Fatalf("mongo: %v", err)
