@@ -85,13 +85,22 @@ Event types (books aggregate):
 
 One topic per aggregate: `<prefix>.books`. The event `type` distinguishes events
 within the topic. Messages are keyed by the aggregate id (the book id) with a hash
-balancer, so all changes to the same book land on one partition and preserve order
-(for delivered events).
+balancer, so all events for one book land on the same partition.
+
+> **Ordering caveat.** Same-partition placement only makes events FIFO relative to
+> the order they are *published*, which is **not** guaranteed to match DB-commit
+> order: concurrent writes to the same book are not serialized before publishing,
+> so two racing updates can commit in one order and be published in the other. The
+> envelope has no per-aggregate sequence number for a consumer to detect this
+> (`occurred_at` is a wall clock, not a monotonic counter). A consumer that applies
+> events in arrival order can therefore end up with stale state. Making publish
+> order follow commit order is exactly what the transactional-outbox upgrade path
+> (below) provides; until then, treat ordering as best-effort like delivery.
 
 ## Observability
 
 Publish attempts increment the Prometheus counter
-`book_events_published_total{type, result}` (`result` is `success` or `error`),
+`domain_events_published_total{type, result}` (`result` is `success` or `error`),
 scraped on the existing `/metrics` endpoint.
 
 ## Try it locally

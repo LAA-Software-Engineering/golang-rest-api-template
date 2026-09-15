@@ -65,11 +65,19 @@ func NewBookService(store repository.BookPersistence, redis cache.Cache, publish
 // publishBookEvent emits a book domain event best-effort: a publish failure is
 // recorded as a metric but never propagated, so it cannot turn an
 // already-committed mutation into an error response.
+//
+// The mutation has already committed by the time this runs, so publishing is a
+// post-commit side effect that must not inherit the request's cancellation or
+// deadline: a client disconnect or the per-request timeout firing must not cut
+// the publish short (that would make added latency depend on request lifetime
+// rather than KAFKA_PUBLISH_TIMEOUT / broker health). context.WithoutCancel
+// keeps request-scoped values (trace/span ids) while dropping cancellation, and
+// the publisher applies its own bounded timeout on top.
 func (s *BookService) publishBookEvent(ctx context.Context, eventType string, b *models.Book) {
 	if s == nil || s.publisher == nil || b == nil {
 		return
 	}
-	err := s.publisher.Publish(ctx, events.Event{
+	err := s.publisher.Publish(context.WithoutCancel(ctx), events.Event{
 		Type:       eventType,
 		Aggregate:  events.AggregateBooks,
 		Key:        strconv.FormatUint(uint64(b.ID), 10),

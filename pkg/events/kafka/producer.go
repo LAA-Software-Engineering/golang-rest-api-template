@@ -24,7 +24,17 @@ type messageWriter interface {
 // It uses a single Writer with RequiredAcks=RequireAll and Async=false, so
 // Publish blocks until the brokers acknowledge the write (or the context
 // deadline elapses). Messages are keyed by the aggregate id via a Hash balancer,
-// so all changes to the same aggregate land on one partition and preserve order.
+// so all events for one aggregate land on the same partition.
+//
+// Ordering caveat: same-partition placement only makes events FIFO relative to
+// the order Publish is *called*. It does NOT guarantee that order matches
+// DB-commit order — the service serializes nothing across concurrent writes to
+// the same aggregate, so two racing updates can commit in one order and reach
+// this producer in the other. The envelope carries no per-aggregate sequence to
+// detect the inversion (OccurredAt is a wall clock, not a monotonic counter), so
+// a consumer applying events in arrival order can end up with stale state. The
+// transactional-outbox upgrade path (deferred; see docs/events.md) is what makes
+// publish order follow commit order.
 //
 // Delivery remains best-effort at the application level: the service ignores
 // Publish errors so a broker problem never fails an already-committed mutation.

@@ -7,8 +7,13 @@
 // It demonstrates the shape of a well-behaved consumer:
 //   - reads the "<prefix>.books" topic as part of a consumer group,
 //   - decodes the stable Envelope contract,
-//   - treats delivery as best-effort (events may be duplicated), so handling is
-//     idempotent (here, a seen-set keyed by envelope id).
+//   - commits the offset only AFTER handling succeeds (FetchMessage +
+//     CommitMessages, not ReadMessage which commits on fetch), so a crash between
+//     fetch and processing redelivers the message rather than losing it —
+//     at-least-once, not at-most-once,
+//   - treats redelivery as expected (events may be duplicated), so handling is
+//     idempotent (here, a seen-set keyed by envelope id, marked only after the
+//     work succeeds).
 //
 // Usage:
 //
@@ -62,16 +67,30 @@ func main() {
 
 	log.Printf("consuming topic %q as group %q from %v", topic, group, brokers)
 	for {
-		msg, err := reader.ReadMessage(ctx)
+		// FetchMessage does NOT commit the offset (unlike ReadMessage, which
+		// commits on fetch and would drop this message if we crashed before
+		// handling it).
+		msg, err := reader.FetchMessage(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
 				log.Println("shutting down")
 				return
 			}
-			log.Printf("read error: %v", err)
+			log.Printf("fetch error: %v", err)
 			continue
 		}
-		handler.handle(msg.Value)
+
+		if err := handler.handle(msg.Value); err != nil {
+			// Handling failed: do NOT commit, so the message is redelivered and
+			// retried. The idempotent seen-set absorbs the resulting duplicate.
+			log.Printf("handle error (will retry on redelivery): %v", err)
+			continue
+		}
+
+		// Commit only after successful handling → at-least-once.
+		if err := reader.CommitMessages(ctx, msg); err != nil {
+			log.Printf("commit error: %v", err)
+		}
 	}
 }
 
@@ -80,24 +99,37 @@ type idempotentHandler struct {
 	seen map[string]struct{}
 }
 
-func (h *idempotentHandler) handle(value []byte) {
+// handle processes one message. A nil return means "safe to commit"; a non-nil
+// return means the message should be redelivered and retried.
+func (h *idempotentHandler) handle(value []byte) error {
 	var env events.Envelope
 	if err := json.Unmarshal(value, &env); err != nil {
+		// A malformed message will never become valid on redelivery, so retrying
+		// forever would wedge the partition. Log and commit past it.
 		log.Printf("skipping malformed envelope: %v", err)
-		return
+		return nil
 	}
 
 	h.mu.Lock()
-	if _, dup := h.seen[env.ID]; dup {
-		h.mu.Unlock()
-		log.Printf("duplicate event %s (%s) — skipping", env.ID, env.Type)
-		return
-	}
-	h.seen[env.ID] = struct{}{}
+	_, dup := h.seen[env.ID]
 	h.mu.Unlock()
+	if dup {
+		// Already processed (redelivery). The effect was applied before; safe to
+		// commit again.
+		log.Printf("duplicate event %s (%s) — already processed, skipping", env.ID, env.Type)
+		return nil
+	}
 
+	// --- do the real work here; return an error to trigger redelivery ---
 	log.Printf("event id=%s type=%s source=%s at=%s data=%v",
 		env.ID, env.Type, env.Source, env.OccurredAt.Format("15:04:05"), env.Data)
+
+	// Mark seen only after the work succeeded, so a failure above leaves the
+	// event un-seen and re-processable on redelivery.
+	h.mu.Lock()
+	h.seen[env.ID] = struct{}{}
+	h.mu.Unlock()
+	return nil
 }
 
 func envOr(key, def string) string {

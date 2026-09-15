@@ -12,13 +12,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakePublisher records published events and can be made to fail.
+// fakePublisher records published events (and the context it was called with)
+// and can be made to fail.
 type fakePublisher struct {
-	events []events.Event
-	err    error
+	events  []events.Event
+	lastCtx context.Context
+	err     error
 }
 
-func (f *fakePublisher) Publish(_ context.Context, e events.Event) error {
+func (f *fakePublisher) Publish(ctx context.Context, e events.Event) error {
+	f.lastCtx = ctx
 	f.events = append(f.events, e)
 	return f.err
 }
@@ -123,6 +126,30 @@ func TestPublishFailureDoesNotFailWrite(t *testing.T) {
 	require.NotNil(t, book)
 	assert.Equal(t, uint(1), book.ID)
 	require.Len(t, pub.events, 1)
+}
+
+func TestPublishDetachesFromRequestContext(t *testing.T) {
+	store := &fakeBookStore{
+		createFn: func(book *models.Book) error { book.ID = 1; return nil },
+	}
+	pub := &fakePublisher{}
+	svc := NewBookService(store, nil, pub)
+
+	// Simulate a request whose context is already canceled (client disconnect or
+	// per-request timeout) by the time the post-commit publish runs.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := svc.CreateBook(ctx, 1, "t", "a")
+	require.NoError(t, err)
+
+	// The event is still published, and the context handed to the publisher is
+	// NOT canceled: the post-commit side effect is detached from request lifetime.
+	require.Len(t, pub.events, 1)
+	require.NotNil(t, pub.lastCtx)
+	assert.NoError(t, pub.lastCtx.Err(), "publish context must not inherit request cancellation")
+	_, hasDeadline := pub.lastCtx.Deadline()
+	assert.False(t, hasDeadline, "publish context must not inherit the request deadline")
 }
 
 func TestNilPublisherDoesNotPanic(t *testing.T) {
