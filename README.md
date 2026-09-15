@@ -58,6 +58,7 @@ On first boot against an empty database, the schema in [`pkg/database/schema.sql
 - Redis cache (book list invalidation bumps a generation counter; no Redis KEYS on the keyspace).
 - MongoDB for logging storage.
 - Optional OpenTelemetry tracing (OTLP), correlated with `X-Request-Id`.
+- Optional domain event publishing to Kafka (book lifecycle events; disabled by default). See [docs/events.md](docs/events.md).
 - Dockerized application for easy setup and deployment.
 
 ## Folder structure
@@ -79,9 +80,13 @@ golang-rest-api-template/
 ├── .golangci.yml
 ├── docs
 │  ├── CONFIGURATION.md
+│  ├── events.md          # optional domain event publishing (Kafka)
 │  ├── docs.go
 │  ├── swagger.json
 │  └── swagger.yaml
+├── examples
+│  └── kafka-consumer     # standalone example consumer (not part of the API)
+│     └── main.go
 ├── go.mod
 ├── go.sum
 ├── internal
@@ -120,6 +125,11 @@ golang-rest-api-template/
 │  │  ├── mongo.go
 │  │  ├── mongo_test.go
 │  │  └── schema.sql        # DDL applied at startup + sqlc schema input
+│  ├── events                # optional domain event publishing (disabled by default)
+│  │  ├── event.go           # Event, Envelope, versioned payloads, Publisher iface
+│  │  ├── noop.go            # NopPublisher (default; no publishing)
+│  │  ├── metrics.go         # domain_events_published_total
+│  │  └── kafka              # Kafka-backed Publisher (KAFKA_* only)
 │  ├── middleware
 │  │  ├── api_key.go
 │  │  ├── api_key_test.go
@@ -244,6 +254,15 @@ The API is documented using Swagger and can be accessed at:
 ```
 http://localhost:8001/swagger/index.html
 ```
+
+### Domain events (optional)
+
+The API can publish book lifecycle events (`book.created.v1`, `book.updated.v1`,
+`book.deleted.v1`) to Kafka so downstream services can react to changes. It is
+**disabled by default** (`EVENTS_DRIVER=none`); the app runs identically without
+it. Delivery is synchronous and best-effort — a broker problem never fails a
+write, but it does add latency to writes. See **[docs/events.md](docs/events.md)**
+for the contract, semantics, configuration, and a runnable example consumer.
 
 ## Usage
 

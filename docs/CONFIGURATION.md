@@ -90,6 +90,19 @@ Names below match `os.Getenv` usage in this repository.
 
 When tracing is enabled, each request gets a server span after `X-Request-Id` is assigned. The request id is recorded on the span as `http.request_id`, and access logs include `trace_id` / `span_id` when a valid span is present.
 
+### Domain events (optional Kafka publishing)
+
+Disabled by default. Delivery is synchronous and best-effort; see **[events.md](./events.md)** for semantics and the event contract.
+
+| Variable | Purpose |
+| -------- | ------- |
+| `EVENTS_DRIVER` | `none` (default; no publishing) or `kafka`. Selected in `cmd/server`. |
+| `SERVICE_NAME` | Envelope `source` field (default `golang-rest-api-template`); rename per deployment. |
+| `KAFKA_BROKERS` | Comma-separated `host:port` broker list. **Required** when `EVENTS_DRIVER=kafka`. |
+| `KAFKA_TOPIC_PREFIX` | Topic prefix; topic is `<prefix>.books` (default `app`). |
+| `KAFKA_PUBLISH_TIMEOUT` | Per-publish timeout, Go duration (default `2s`). Keep short: it bounds added write latency when the broker is slow. |
+| `KAFKA_CONSUMER_GROUP` | Only used by the example consumer in `examples/kafka-consumer` (default `example-consumer`). |
+
 ## End-to-end test variables
 
 The Python E2E suite reads **`BASE_URL`** and **`API_KEY`** from the environment only (no baked-in defaults). `API_KEY` must match the value the API accepts in `X-API-Key` (for a Compose-backed local run, that is the same secret as `API_SECRET_KEY` in `.env`). See [End-to-End (E2E) Tests](../README.md#end-to-end-e2e-tests) in the README for the full workflow.

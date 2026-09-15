@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"golang-rest-api-template/pkg/cache"
+	"golang-rest-api-template/pkg/events"
 	"golang-rest-api-template/pkg/models"
 	"golang-rest-api-template/pkg/repository"
 
@@ -44,16 +46,46 @@ func BooksListDataCacheKey(gen int64, q repository.BookListQuery) string {
 	)
 }
 
-// BookService coordinates book reads/writes, list caching, and cache generation bumps.
+// BookService coordinates book reads/writes, list caching, cache generation
+// bumps, and best-effort domain-event publishing.
 type BookService struct {
-	store  repository.BookPersistence
-	redis  cache.Cache
-	listSF singleflight.Group
+	store     repository.BookPersistence
+	redis     cache.Cache
+	publisher events.Publisher
+	listSF    singleflight.Group
 }
 
-// NewBookService constructs a BookService.
-func NewBookService(store repository.BookPersistence, redis cache.Cache) *BookService {
-	return &BookService{store: store, redis: redis}
+// NewBookService constructs a BookService. redis and publisher are optional
+// collaborators: a nil redis disables list caching, and a nil publisher disables
+// event publishing (equivalent to events.NopPublisher).
+func NewBookService(store repository.BookPersistence, redis cache.Cache, publisher events.Publisher) *BookService {
+	return &BookService{store: store, redis: redis, publisher: publisher}
+}
+
+// publishBookEvent emits a book domain event best-effort: a publish failure is
+// recorded as a metric but never propagated, so it cannot turn an
+// already-committed mutation into an error response.
+func (s *BookService) publishBookEvent(ctx context.Context, eventType string, b *models.Book) {
+	if s == nil || s.publisher == nil || b == nil {
+		return
+	}
+	err := s.publisher.Publish(ctx, events.Event{
+		Type:       eventType,
+		Aggregate:  events.AggregateBooks,
+		Key:        strconv.FormatUint(uint64(b.ID), 10),
+		OccurredAt: time.Now().UTC(),
+		Payload: events.BookPayloadV1{
+			ID:      b.ID,
+			OwnerID: b.OwnerID,
+			Title:   b.Title,
+			Author:  b.Author,
+		},
+	})
+	result := "success"
+	if err != nil {
+		result = "error"
+	}
+	events.PublishTotal.WithLabelValues(eventType, result).Inc()
 }
 
 func (s *BookService) cacheGeneration(ctx context.Context) int64 {
@@ -125,6 +157,7 @@ func (s *BookService) CreateBook(ctx context.Context, ownerID uint, title, autho
 		return nil, err
 	}
 	s.bumpListCacheGeneration(ctx)
+	s.publishBookEvent(ctx, events.TypeBookCreated, book)
 	return book, nil
 }
 
@@ -147,6 +180,7 @@ func (s *BookService) ReplaceBook(ctx context.Context, actorID, id uint, title, 
 		return nil, err
 	}
 	s.bumpListCacheGeneration(ctx)
+	s.publishBookEvent(ctx, events.TypeBookUpdated, book)
 	return book, nil
 }
 
@@ -164,6 +198,7 @@ func (s *BookService) PatchBook(ctx context.Context, actorID, id uint, title, au
 		return nil, err
 	}
 	s.bumpListCacheGeneration(ctx)
+	s.publishBookEvent(ctx, events.TypeBookUpdated, book)
 	return book, nil
 }
 
@@ -180,5 +215,8 @@ func (s *BookService) DeleteBook(ctx context.Context, actorID, id uint) error {
 		return err
 	}
 	s.bumpListCacheGeneration(ctx)
+	// b is the pre-delete snapshot fetched above, so the deleted event carries
+	// the book's owner/title/author rather than just an id.
+	s.publishBookEvent(ctx, events.TypeBookDeleted, b)
 	return nil
 }

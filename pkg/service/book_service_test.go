@@ -116,7 +116,7 @@ func TestListBooksNilRedisUsesStore(t *testing.T) {
 			return want, nil
 		},
 	}
-	svc := NewBookService(store, nil)
+	svc := NewBookService(store, nil, nil)
 	q := defaultListQuery(3, 7)
 	q.TitleLike = "go"
 	got, err := svc.ListBooks(context.Background(), q)
@@ -146,7 +146,7 @@ func TestListBooksCacheHit(t *testing.T) {
 			return nil, nil
 		},
 	}
-	svc := NewBookService(store, mockRedis)
+	svc := NewBookService(store, mockRedis, nil)
 	got, err := svc.ListBooks(context.Background(), q)
 	assert.NoError(t, err)
 	assert.Equal(t, want, got)
@@ -164,7 +164,7 @@ func TestListBooksCacheUnmarshalError(t *testing.T) {
 		mockRedis.EXPECT().Get(gomock.Any(), dataKey).Return(redis.NewStringResult("not-json", nil)),
 	)
 
-	svc := NewBookService(&fakeBookStore{}, mockRedis)
+	svc := NewBookService(&fakeBookStore{}, mockRedis, nil)
 	_, err := svc.ListBooks(context.Background(), q)
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, ErrListBooksUnmarshal)
@@ -188,7 +188,7 @@ func TestListBooksStoreError(t *testing.T) {
 			return nil, dbErr
 		},
 	}
-	svc := NewBookService(store, mockRedis)
+	svc := NewBookService(store, mockRedis, nil)
 	_, err := svc.ListBooks(context.Background(), q)
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, ErrListBooksDB)
@@ -246,7 +246,7 @@ func TestListBooksSingleflightCoalescesConcurrentMiss(t *testing.T) {
 		return redis.NewStatusResult("OK", nil)
 	}).Times(1)
 
-	svc := NewBookService(store, mockRedis)
+	svc := NewBookService(store, mockRedis, nil)
 	const n = 40
 	var wg sync.WaitGroup
 	wg.Add(n)
@@ -280,7 +280,7 @@ func TestListBooksRedisSetError(t *testing.T) {
 			return want, nil
 		},
 	}
-	svc := NewBookService(store, mockRedis)
+	svc := NewBookService(store, mockRedis, nil)
 	_, err := svc.ListBooks(context.Background(), q)
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, ErrListBooksRedis)
@@ -314,7 +314,7 @@ func TestListBooksDistinctFiltersUseDistinctCacheKeys(t *testing.T) {
 			return []models.Book{{Title: "rust book"}}, nil
 		},
 	}
-	svc := NewBookService(store, mockRedis)
+	svc := NewBookService(store, mockRedis, nil)
 
 	got1, err := svc.ListBooks(context.Background(), q1)
 	assert.NoError(t, err)
@@ -338,7 +338,7 @@ func TestCreateBookBumpsGenerationWhenRedis(t *testing.T) {
 			return nil
 		},
 	}
-	svc := NewBookService(store, mockRedis)
+	svc := NewBookService(store, mockRedis, nil)
 	book, err := svc.CreateBook(context.Background(), 1, "t", "a")
 	assert.NoError(t, err)
 	assert.NotNil(t, book)
@@ -352,7 +352,7 @@ func TestCreateBookNoIncrWhenNilRedis(t *testing.T) {
 			return nil
 		},
 	}
-	svc := NewBookService(store, nil)
+	svc := NewBookService(store, nil, nil)
 	_, err := svc.CreateBook(context.Background(), 1, "t", "a")
 	assert.NoError(t, err)
 }
@@ -365,7 +365,7 @@ func TestGetBookDelegates(t *testing.T) {
 			return want, nil
 		},
 	}
-	svc := NewBookService(store, nil)
+	svc := NewBookService(store, nil, nil)
 	got, err := svc.GetBook(context.Background(), 3)
 	assert.NoError(t, err)
 	assert.Equal(t, want, got)
@@ -389,7 +389,7 @@ func TestReplaceBookBumpsGeneration(t *testing.T) {
 			return updated, nil
 		},
 	}
-	svc := NewBookService(store, mockRedis)
+	svc := NewBookService(store, mockRedis, nil)
 	got, err := svc.ReplaceBook(context.Background(), 5, 1, "n", "m")
 	assert.NoError(t, err)
 	assert.Equal(t, updated, got)
@@ -415,7 +415,7 @@ func TestPatchBookBumpsGenerationTitleOnly(t *testing.T) {
 			return out, nil
 		},
 	}
-	svc := NewBookService(store, mockRedis)
+	svc := NewBookService(store, mockRedis, nil)
 	got, err := svc.PatchBook(context.Background(), 7, 2, &newTitle, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, out, got)
@@ -436,7 +436,7 @@ func TestDeleteBookBumpsGeneration(t *testing.T) {
 			return nil
 		},
 	}
-	svc := NewBookService(store, mockRedis)
+	svc := NewBookService(store, mockRedis, nil)
 	assert.NoError(t, svc.DeleteBook(context.Background(), 3, 9))
 }
 
@@ -446,7 +446,7 @@ func TestReplaceBookWrongOwner(t *testing.T) {
 			return &models.Book{ID: 1, OwnerID: 1}, nil
 		},
 	}
-	svc := NewBookService(store, nil)
+	svc := NewBookService(store, nil, nil)
 	_, err := svc.ReplaceBook(context.Background(), 2, 1, "x", "y")
 	assert.ErrorIs(t, err, ErrBookForbidden)
 }
@@ -458,7 +458,7 @@ func TestPatchBookWrongOwner(t *testing.T) {
 			return &models.Book{ID: 1, OwnerID: 1}, nil
 		},
 	}
-	svc := NewBookService(store, nil)
+	svc := NewBookService(store, nil, nil)
 	_, err := svc.PatchBook(context.Background(), 2, 1, &x, nil)
 	assert.ErrorIs(t, err, ErrBookForbidden)
 }
@@ -469,6 +469,6 @@ func TestDeleteBookWrongOwner(t *testing.T) {
 			return &models.Book{ID: 1, OwnerID: 1}, nil
 		},
 	}
-	svc := NewBookService(store, nil)
+	svc := NewBookService(store, nil, nil)
 	assert.ErrorIs(t, svc.DeleteBook(context.Background(), 9, 1), ErrBookForbidden)
 }

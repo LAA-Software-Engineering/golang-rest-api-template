@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"golang-rest-api-template/pkg/cache"
 	"golang-rest-api-template/pkg/httperr"
 	"golang-rest-api-template/pkg/httpresp"
 	"golang-rest-api-template/pkg/middleware"
@@ -38,9 +37,12 @@ type bookHandler struct {
 	svc *service.BookService
 }
 
-// NewBookHandler wires persistence and cache into book HTTP handlers.
-func NewBookHandler(store repository.BookPersistence, redisClient cache.Cache) *bookHandler {
-	return &bookHandler{svc: service.NewBookService(store, redisClient)}
+// NewBookHandler wires a BookService into the book HTTP handlers. The service is
+// constructed by the caller (see NewRouter) so its collaborators — persistence,
+// cache, and the optional event publisher — are assembled at the composition
+// root rather than here.
+func NewBookHandler(svc *service.BookService) *bookHandler {
+	return &bookHandler{svc: svc}
 }
 
 func parseIDParam(c *gin.Context) (uint, bool) {

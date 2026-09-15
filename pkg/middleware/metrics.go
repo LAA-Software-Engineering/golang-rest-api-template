@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"golang-rest-api-template/pkg/events"
+
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -113,6 +115,9 @@ func NewMetrics(cfg MetricsConfig) *Metrics {
 		requests,
 		duration,
 		inFlight,
+		// Domain-event publishing metric (defined in pkg/events; incremented by
+		// the service layer). Registered here so it is exposed on /metrics.
+		events.PublishTotal,
 	)
 
 	m.registry = reg
