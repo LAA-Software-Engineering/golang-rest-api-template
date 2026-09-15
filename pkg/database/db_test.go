@@ -1,6 +1,7 @@
 package database
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -8,6 +9,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestClampToInt32(t *testing.T) {
+	assert.Equal(t, int32(0), clampToInt32(0))
+	assert.Equal(t, int32(25), clampToInt32(25))
+	assert.Equal(t, int32(math.MaxInt32), clampToInt32(math.MaxInt32))
+	assert.Equal(t, int32(math.MaxInt32), clampToInt32(math.MaxInt32+1))
+	assert.Equal(t, int32(0), clampToInt32(-5))
+}
 
 func TestApplyPoolConfigDefaults(t *testing.T) {
 	cfg, err := pgxpool.ParseConfig("postgres://u:p@localhost:5432/db")

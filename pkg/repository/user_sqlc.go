@@ -41,7 +41,7 @@ func (s *SQLCUserStore) FindByUsername(username string) (*models.User, error) {
 }
 
 func (s *SQLCUserStore) FindByID(id uint) (*models.User, error) {
-	row, err := s.q.GetUserByID(context.Background(), int64(id))
+	row, err := s.q.GetUserByID(context.Background(), toInt64(id))
 	if err != nil {
 		return nil, mapNotFound(err)
 	}

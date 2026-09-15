@@ -37,7 +37,7 @@ func refreshFromDB(t dbsqlc.RefreshToken) models.RefreshToken {
 
 func (s *SQLCRefreshTokenStore) Create(token *models.RefreshToken) error {
 	row, err := s.q.CreateRefreshToken(context.Background(), dbsqlc.CreateRefreshTokenParams{
-		UserID:    int64(token.UserID),
+		UserID:    toInt64(token.UserID),
 		TokenHash: token.TokenHash,
 		FamilyID:  token.FamilyID,
 		ExpiresAt: token.ExpiresAt,
@@ -70,7 +70,7 @@ func (s *SQLCRefreshTokenStore) RotateAtomically(oldID uint, at time.Time, next 
 	qtx := s.q.WithTx(tx)
 	consumedAt := at
 	n, err := qtx.ConsumeRefreshTokenIfActive(ctx, dbsqlc.ConsumeRefreshTokenIfActiveParams{
-		ID:         int64(oldID),
+		ID:         toInt64(oldID),
 		ConsumedAt: &consumedAt,
 	})
 	if err != nil {
@@ -80,7 +80,7 @@ func (s *SQLCRefreshTokenStore) RotateAtomically(oldID uint, at time.Time, next 
 		return ErrRefreshAlreadyConsumed
 	}
 	row, err := qtx.CreateRefreshToken(ctx, dbsqlc.CreateRefreshTokenParams{
-		UserID:    int64(next.UserID),
+		UserID:    toInt64(next.UserID),
 		TokenHash: next.TokenHash,
 		FamilyID:  next.FamilyID,
 		ExpiresAt: next.ExpiresAt,
@@ -106,7 +106,7 @@ func (s *SQLCRefreshTokenStore) RevokeFamily(familyID string, at time.Time) erro
 func (s *SQLCRefreshTokenStore) RevokeAllForUser(userID uint, at time.Time) error {
 	revokedAt := at
 	return s.q.RevokeAllRefreshForUser(context.Background(), dbsqlc.RevokeAllRefreshForUserParams{
-		UserID:    int64(userID),
+		UserID:    toInt64(userID),
 		RevokedAt: &revokedAt,
 	})
 }

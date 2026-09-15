@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -28,6 +29,19 @@ const (
 	defaultPostgresConnMaxLifetime = time.Hour
 	defaultPostgresConnMaxIdleTime = 10 * time.Minute
 )
+
+// clampToInt32 narrows a positive int to int32 with an explicit upper-bound
+// check, so an out-of-range POSTGRES_* value cannot wrap to a negative or
+// nonsensical pool size.
+func clampToInt32(v int) int32 {
+	if v > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if v < 0 {
+		return 0
+	}
+	return int32(v)
+}
 
 func getenvPositiveInt(key string, def int) int {
 	s := strings.TrimSpace(os.Getenv(key))
@@ -64,8 +78,8 @@ func applyPoolConfig(cfg *pgxpool.Config) {
 	if minIdle > maxOpen {
 		minIdle = maxOpen
 	}
-	cfg.MaxConns = int32(maxOpen)
-	cfg.MinConns = int32(minIdle)
+	cfg.MaxConns = clampToInt32(maxOpen)
+	cfg.MinConns = clampToInt32(minIdle)
 	cfg.MaxConnLifetime = getenvPositiveDuration("POSTGRES_CONN_MAX_LIFETIME", defaultPostgresConnMaxLifetime)
 	cfg.MaxConnIdleTime = getenvPositiveDuration("POSTGRES_CONN_MAX_IDLE_TIME", defaultPostgresConnMaxIdleTime)
 }

@@ -81,7 +81,7 @@ func (s *SQLCBookStore) List(q BookListQuery) ([]models.Book, error) {
 		conds = append(conds, fmt.Sprintf(`LOWER(author) LIKE $%d ESCAPE '\'`, len(args)))
 	}
 	if q.OwnerID != nil {
-		args = append(args, int64(*q.OwnerID))
+		args = append(args, toInt64(*q.OwnerID))
 		conds = append(conds, fmt.Sprintf("owner_id = $%d", len(args)))
 	}
 	if len(conds) > 0 {
@@ -139,7 +139,7 @@ func (s *SQLCBookStore) List(q BookListQuery) ([]models.Book, error) {
 
 func (s *SQLCBookStore) Create(book *models.Book) error {
 	row, err := s.q.CreateBook(context.Background(), dbsqlc.CreateBookParams{
-		OwnerID: int64(book.OwnerID),
+		OwnerID: toInt64(book.OwnerID),
 		Title:   book.Title,
 		Author:  book.Author,
 	})
@@ -151,7 +151,7 @@ func (s *SQLCBookStore) Create(book *models.Book) error {
 }
 
 func (s *SQLCBookStore) FirstByID(id uint) (*models.Book, error) {
-	row, err := s.q.GetBook(context.Background(), int64(id))
+	row, err := s.q.GetBook(context.Background(), toInt64(id))
 	if err != nil {
 		return nil, mapNotFound(err)
 	}
@@ -161,7 +161,7 @@ func (s *SQLCBookStore) FirstByID(id uint) (*models.Book, error) {
 
 func (s *SQLCBookStore) UpdateFields(id uint, title, author string) (*models.Book, error) {
 	row, err := s.q.UpdateBookFields(context.Background(), dbsqlc.UpdateBookFieldsParams{
-		ID:     int64(id),
+		ID:     toInt64(id),
 		Title:  title,
 		Author: author,
 	})
@@ -178,7 +178,7 @@ func (s *SQLCBookStore) PatchFields(id uint, title, author *string) (*models.Boo
 		return s.FirstByID(id)
 	}
 	row, err := s.q.PatchBookFields(context.Background(), dbsqlc.PatchBookFieldsParams{
-		ID:     int64(id),
+		ID:     toInt64(id),
 		Title:  title,
 		Author: author,
 	})
@@ -190,7 +190,7 @@ func (s *SQLCBookStore) PatchFields(id uint, title, author *string) (*models.Boo
 }
 
 func (s *SQLCBookStore) DeleteByID(id uint) error {
-	n, err := s.q.DeleteBook(context.Background(), int64(id))
+	n, err := s.q.DeleteBook(context.Background(), toInt64(id))
 	if err != nil {
 		return err
 	}
