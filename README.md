@@ -5,7 +5,7 @@
 
 ## Overview
 
-This repository provides a template for building a RESTful API using Go with features like JWT Authentication, rate limiting, Swagger documentation, and database operations using GORM. The application uses the Gin Gonic web framework and is containerized using Docker.
+This repository provides a template for building a RESTful API using Go with features like JWT Authentication, rate limiting, Swagger documentation, and type-safe database access using [sqlc](https://sqlc.dev) over [pgx](https://github.com/jackc/pgx). The application uses the Gin Gonic web framework and is containerized using Docker.
 
 ## Features
 
@@ -15,7 +15,7 @@ This repository provides a template for building a RESTful API using Go with fea
 - Rate Limiting (per-client fixed window via Redis; see `RATE_LIMIT_*`).
 - Prometheus metrics on `/metrics` (see `METRICS_*`).
 - Swagger Documentation.
-- PostgreSQL database integration using GORM.
+- PostgreSQL database integration using sqlc-generated queries over pgx (schema in `pkg/database/schema.sql`, queries in `pkg/repository/queries/`; regenerate with `make sqlc-generate`).
 - Redis cache (book list invalidation bumps a generation counter; no Redis KEYS on the keyspace).
 - MongoDB for logging storage.
 - Optional OpenTelemetry tracing (OTLP), correlated with `X-Request-Id`.

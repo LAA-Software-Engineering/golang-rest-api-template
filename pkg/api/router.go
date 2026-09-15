@@ -13,22 +13,22 @@ import (
 	docs "golang-rest-api-template/docs"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
 	swaggerfiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.uber.org/zap"
-	"gorm.io/gorm"
 )
 
 // NewRouter builds the Gin engine with middleware, Swagger, and API routes.
-func NewRouter(logger *zap.Logger, mongoCollection *mongo.Collection, db *gorm.DB, redisClient cache.Cache) *gin.Engine {
+func NewRouter(logger *zap.Logger, mongoCollection *mongo.Collection, db *pgxpool.Pool, redisClient cache.Cache) *gin.Engine {
 	denylist := auth.NewTokenDenylistFromEnv(redisClient)
 	jwtAuth := middleware.JWTAuth(denylist)
 
-	books := NewBookHandler(repository.NewGormBookStore(db), redisClient)
+	books := NewBookHandler(repository.NewSQLCBookStore(db), redisClient)
 	users := NewUserHandler(
-		repository.NewGormUserStore(db),
-		repository.NewGormRefreshTokenStore(db),
+		repository.NewSQLCUserStore(db),
+		repository.NewSQLCRefreshTokenStore(db),
 		denylist,
 	)
 

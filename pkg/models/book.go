@@ -3,12 +3,12 @@ package models
 import "time"
 
 type Book struct {
-	ID        uint      `json:"id" gorm:"primary_key"`
-	OwnerID   uint      `json:"owner_id" gorm:"index;not null"`
+	ID        uint      `json:"id"`
+	OwnerID   uint      `json:"owner_id"`
 	Title     string    `json:"title"`
 	Author    string    `json:"author"`
-	CreatedAt time.Time `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt time.Time `json:"updated_at" gorm:"autoUpdateTime"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type CreateBook struct {

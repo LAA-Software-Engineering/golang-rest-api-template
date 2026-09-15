@@ -6,10 +6,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"golang-rest-api-template/internal/pgtest"
+
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
 )
 
 func TestLivez(t *testing.T) {
@@ -29,12 +29,9 @@ func TestPingPostgresNilDB(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestPingPostgresSQLiteOK(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.NoError(t, pingPostgres(context.Background(), db))
+func TestPingPostgresOK(t *testing.T) {
+	pool := pgtest.Pool(t)
+	assert.NoError(t, pingPostgres(context.Background(), pool))
 }
 
 func TestPingRedisNilClient(t *testing.T) {

@@ -3,6 +3,11 @@ setup:
 	go install github.com/swaggo/swag/cmd/swag@v1.16.4
 	swag init -g ./cmd/server/main.go -o ./docs
 
+# Regenerate type-safe DB access code from pkg/database/schema.sql and
+# pkg/repository/queries/*.sql (config in sqlc.yaml). Commit the output.
+sqlc-generate:
+	go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0 generate
+
 build-docker:
 	docker compose build --no-cache
 

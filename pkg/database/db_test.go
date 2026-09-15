@@ -4,26 +4,37 @@ import (
 	"testing"
 	"time"
 
-	"golang-rest-api-template/pkg/models"
-
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
+	"github.com/stretchr/testify/require"
 )
 
-func setupSQLiteDB(t *testing.T) *gorm.DB {
-	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
-	assert.NoError(t, err)
+func TestApplyPoolConfigDefaults(t *testing.T) {
+	cfg, err := pgxpool.ParseConfig("postgres://u:p@localhost:5432/db")
+	require.NoError(t, err)
 
-	err = db.AutoMigrate(&models.Book{}, &models.User{}, &models.RefreshToken{})
-	assert.NoError(t, err)
+	applyPoolConfig(cfg)
 
-	return db
+	assert.Equal(t, int32(defaultPostgresMaxOpenConns), cfg.MaxConns)
+	assert.Equal(t, int32(defaultPostgresMaxIdleConns), cfg.MinConns)
+	assert.Equal(t, defaultPostgresConnMaxLifetime, cfg.MaxConnLifetime)
+	assert.Equal(t, defaultPostgresConnMaxIdleTime, cfg.MaxConnIdleTime)
 }
 
-func TestConfigureConnPoolSQLite(t *testing.T) {
-	db := setupSQLiteDB(t)
-	assert.NoError(t, configureConnPool(db))
+func TestApplyPoolConfigFromEnv(t *testing.T) {
+	t.Setenv("POSTGRES_MAX_OPEN_CONNS", "10")
+	t.Setenv("POSTGRES_MAX_IDLE_CONNS", "50") // capped to max open
+	t.Setenv("POSTGRES_CONN_MAX_LIFETIME", "2h")
+	t.Setenv("POSTGRES_CONN_MAX_IDLE_TIME", "1m")
+
+	cfg, err := pgxpool.ParseConfig("postgres://u:p@localhost:5432/db")
+	require.NoError(t, err)
+	applyPoolConfig(cfg)
+
+	assert.Equal(t, int32(10), cfg.MaxConns)
+	assert.Equal(t, int32(10), cfg.MinConns, "idle should be capped at max open")
+	assert.Equal(t, 2*time.Hour, cfg.MaxConnLifetime)
+	assert.Equal(t, time.Minute, cfg.MaxConnIdleTime)
 }
 
 func TestGetenvPositiveInt(t *testing.T) {

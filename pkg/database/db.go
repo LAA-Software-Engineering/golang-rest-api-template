@@ -1,6 +1,8 @@
 package database
 
 import (
+	"context"
+	_ "embed"
 	"fmt"
 	"log"
 	"os"
@@ -8,13 +10,17 @@ import (
 	"strings"
 	"time"
 
-	"golang-rest-api-template/pkg/models"
-
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var sleep = time.Sleep
+
+// schemaSQL is the application DDL applied at startup (replacing GORM AutoMigrate).
+// It is idempotent (CREATE TABLE IF NOT EXISTS) so repeated boots are safe. The
+// same file is the schema input for sqlc code generation (see sqlc.yaml).
+//
+//go:embed schema.sql
+var schemaSQL string
 
 const (
 	defaultPostgresMaxOpenConns    = 25
@@ -49,76 +55,75 @@ func getenvPositiveDuration(key string, def time.Duration) time.Duration {
 	return d
 }
 
-// configureConnPool applies *sql.DB pool settings from POSTGRES_* env vars (with
-// sane defaults). max idle connections is capped at max open.
-func configureConnPool(db *gorm.DB) error {
-	sqlDB, err := db.DB()
-	if err != nil {
-		return err
-	}
+// applyPoolConfig sets pgxpool pool sizing from POSTGRES_* env vars (with sane
+// defaults). MinConns is capped at MaxConns. The pgxpool equivalents of the old
+// database/sql knobs: MaxConns, MinConns, MaxConnLifetime, MaxConnIdleTime.
+func applyPoolConfig(cfg *pgxpool.Config) {
 	maxOpen := getenvPositiveInt("POSTGRES_MAX_OPEN_CONNS", defaultPostgresMaxOpenConns)
-	maxIdle := getenvPositiveInt("POSTGRES_MAX_IDLE_CONNS", defaultPostgresMaxIdleConns)
-	if maxIdle > maxOpen {
-		maxIdle = maxOpen
+	minIdle := getenvPositiveInt("POSTGRES_MAX_IDLE_CONNS", defaultPostgresMaxIdleConns)
+	if minIdle > maxOpen {
+		minIdle = maxOpen
 	}
-	lifetime := getenvPositiveDuration("POSTGRES_CONN_MAX_LIFETIME", defaultPostgresConnMaxLifetime)
-	idleTime := getenvPositiveDuration("POSTGRES_CONN_MAX_IDLE_TIME", defaultPostgresConnMaxIdleTime)
-
-	sqlDB.SetMaxOpenConns(maxOpen)
-	sqlDB.SetMaxIdleConns(maxIdle)
-	sqlDB.SetConnMaxLifetime(lifetime)
-	sqlDB.SetConnMaxIdleTime(idleTime)
-	return nil
+	cfg.MaxConns = int32(maxOpen)
+	cfg.MinConns = int32(minIdle)
+	cfg.MaxConnLifetime = getenvPositiveDuration("POSTGRES_CONN_MAX_LIFETIME", defaultPostgresConnMaxLifetime)
+	cfg.MaxConnIdleTime = getenvPositiveDuration("POSTGRES_CONN_MAX_IDLE_TIME", defaultPostgresConnMaxIdleTime)
 }
 
-// NewDatabase opens PostgreSQL using POSTGRES_* environment variables, retries on
-// failure, runs AutoMigrate for application models, and configures the underlying
-// sql.DB pool. It returns nil if the database cannot be opened or configured.
-func NewDatabase() *gorm.DB {
-	var database *gorm.DB
-	var err error
-
+// NewDatabase opens a PostgreSQL connection pool using POSTGRES_* environment
+// variables, retries on failure, applies the embedded schema, and configures the
+// pool. It returns nil if the database cannot be opened, migrated, or configured.
+func NewDatabase() *pgxpool.Pool {
 	db_hostname := os.Getenv("POSTGRES_HOST")
 	db_name := os.Getenv("POSTGRES_DB")
 	db_user := os.Getenv("POSTGRES_USER")
 	db_pass := os.Getenv("POSTGRES_PASSWORD")
 	db_port := os.Getenv("POSTGRES_PORT")
 
-	dbURl := fmt.Sprintf("postgres://%s:%s@%s:%s/%s", db_user, db_pass, db_hostname, db_port, db_name)
+	dbURL := fmt.Sprintf("postgres://%s:%s@%s:%s/%s", db_user, db_pass, db_hostname, db_port, db_name)
 
+	cfg, err := pgxpool.ParseConfig(dbURL)
+	if err != nil {
+		log.Printf("database: invalid connection config: %v", err)
+		return nil
+	}
+	applyPoolConfig(cfg)
+
+	var pool *pgxpool.Pool
 	for i := 1; i <= 3; i++ {
-		database, err = gorm.Open(postgres.Open(dbURl), &gorm.Config{})
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		pool, err = pgxpool.NewWithConfig(ctx, cfg)
+		if err == nil {
+			err = pool.Ping(ctx)
+		}
+		cancel()
 		if err == nil {
 			break
+		}
+		if pool != nil {
+			pool.Close()
+			pool = nil
 		}
 		log.Printf("Attempt %d: Failed to initialize database. Retrying...", i)
 		sleep(3 * time.Second)
 	}
 
-	if database == nil {
+	if pool == nil {
 		log.Printf("Failed to initialize database after retries: %v", err)
 		return nil
 	}
 
-	if err := database.AutoMigrate(&models.Book{}); err != nil {
-		log.Printf("Failed to migrate Book model: %v", err)
+	if err := ApplySchema(context.Background(), pool); err != nil {
+		log.Printf("Failed to apply database schema: %v", err)
+		pool.Close()
 		return nil
 	}
 
-	if err := database.AutoMigrate(&models.User{}); err != nil {
-		log.Printf("Failed to migrate User model: %v", err)
-		return nil
-	}
+	return pool
+}
 
-	if err := database.AutoMigrate(&models.RefreshToken{}); err != nil {
-		log.Printf("Failed to migrate RefreshToken model: %v", err)
-		return nil
-	}
-
-	if err := configureConnPool(database); err != nil {
-		log.Printf("Failed to configure SQL connection pool: %v", err)
-		return nil
-	}
-
-	return database
+// ApplySchema executes the embedded schema against pool. It is idempotent.
+func ApplySchema(ctx context.Context, pool *pgxpool.Pool) error {
+	_, err := pool.Exec(ctx, schemaSQL)
+	return err
 }
