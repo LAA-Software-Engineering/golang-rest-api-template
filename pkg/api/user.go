@@ -155,14 +155,14 @@ func (h *userHandler) LogoutHandler(c *gin.Context) {
 // RegisterHandler godoc
 // @Summary Register a new user
 // @Schemes http
-// @Description Registers a new user with the given username and password
+// @Description Registers a new user with the given username and password. The password must be at most 72 bytes (bcrypt limit); longer passwords are rejected with 400.
 // @Tags user
 // @Security ApiKeyAuth
 // @Accept  json
 // @Produce  json
 // @Param   user     body    models.LoginUser     true        "User registration object"
 // @Success 201 {object} models.RegisterAPIResponse "Registration message in standard envelope"
-// @Failure 400 {string} string "Bad Request"
+// @Failure 400 {string} string "Bad Request — invalid JSON or password exceeds 72 bytes"
 // @Failure 409 {string} string "Conflict"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /register [post]

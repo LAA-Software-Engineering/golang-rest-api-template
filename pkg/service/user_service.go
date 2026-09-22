@@ -192,7 +192,7 @@ func (s *UserService) Logout(ctx context.Context, userID uint, refreshPlaintext,
 
 // Register creates a new user account.
 func (s *UserService) Register(ctx context.Context, username, password string) error {
-	if len([]byte(password)) > 72 {
+	if len(password) > 72 {
 		return ErrPasswordTooLong
 	}
 	hashedPassword, err := auth.HashPassword(password)

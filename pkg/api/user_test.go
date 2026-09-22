@@ -336,3 +336,31 @@ func TestRegisterHandlerPasswordTooLong(t *testing.T) {
 	assert.Contains(t, body, "password must be at most 72 bytes")
 }
 
+func TestRegisterHandlerPasswordAtExactLimit(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockUsers := repository.NewMockUserPersistence(ctrl)
+	// Exactly 72 bytes should pass the pre-check and reach Create.
+	mockUsers.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+	h := NewUserHandler(mockUsers, nil, auth.NoopDenylist{})
+
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.POST("/register", h.RegisterHandler)
+
+	loginUser := models.LoginUser{
+		Username: "newuser",
+		Password: string(bytes.Repeat([]byte("a"), 72)),
+	}
+	requestBody, _ := json.Marshal(loginUser)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/register", bytes.NewBuffer(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+}
+
+

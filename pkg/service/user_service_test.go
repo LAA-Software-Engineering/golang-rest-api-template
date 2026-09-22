@@ -498,3 +498,20 @@ func TestUserServiceRegisterPasswordTooLong(t *testing.T) {
 	assert.ErrorIs(t, err, ErrPasswordTooLong)
 }
 
+func TestUserServiceRegisterPasswordAtExactLimit(t *testing.T) {
+	var created *models.User
+	store := &fakeUserStore{
+		createFn: func(user *models.User) error {
+			created = user
+			return nil
+		},
+	}
+	svc := testUserService(store, newMemRefreshStore())
+
+	// Exactly 72 bytes — must be accepted (the limit is len > 72, so 72 is permitted)
+	exactPassword := string(bytes.Repeat([]byte("a"), 72))
+	err := svc.Register(context.Background(), "u", exactPassword)
+	assert.NoError(t, err)
+	assert.NotNil(t, created, "user should have been created for a 72-byte password")
+}
+
