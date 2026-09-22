@@ -176,6 +176,8 @@ func (h *userHandler) RegisterHandler(c *gin.Context) {
 		switch {
 		case errors.Is(err, service.ErrRegisterConflict):
 			httperr.Write(c, http.StatusConflict, "username already taken")
+		case errors.Is(err, service.ErrPasswordTooLong):
+			httperr.Write(c, http.StatusBadRequest, "password must be at most 72 bytes")
 		case errors.Is(err, service.ErrRegisterHash), errors.Is(err, service.ErrRegisterSave):
 			httperr.Write(c, http.StatusInternalServerError, "Could not save user")
 		default:

@@ -486,3 +486,15 @@ func TestUserServiceRegisterSaveError(t *testing.T) {
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, ErrRegisterSave)
 }
+
+func TestUserServiceRegisterPasswordTooLong(t *testing.T) {
+	store := &fakeUserStore{}
+	svc := testUserService(store, newMemRefreshStore())
+
+	// 73 bytes exceeds the 72-byte bcrypt limit
+	longPassword := string(bytes.Repeat([]byte("a"), 73))
+	err := svc.Register(context.Background(), "u", longPassword)
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrPasswordTooLong)
+}
+

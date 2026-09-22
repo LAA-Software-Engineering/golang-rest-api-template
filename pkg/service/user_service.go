@@ -20,6 +20,7 @@ var (
 	ErrLoginDB          = errors.New("service: login database error")
 	ErrTokenGenerate    = errors.New("service: token generation failed")
 	ErrRegisterConflict = errors.New("service: username already taken")
+	ErrPasswordTooLong  = errors.New("service: password exceeds 72 bytes")
 	ErrRegisterHash     = errors.New("service: password hash failed")
 	ErrRegisterSave     = errors.New("service: could not save user")
 	ErrInvalidRefresh   = errors.New("service: invalid refresh token")
@@ -191,8 +192,14 @@ func (s *UserService) Logout(ctx context.Context, userID uint, refreshPlaintext,
 
 // Register creates a new user account.
 func (s *UserService) Register(ctx context.Context, username, password string) error {
+	if len([]byte(password)) > 72 {
+		return ErrPasswordTooLong
+	}
 	hashedPassword, err := auth.HashPassword(password)
 	if err != nil {
+		if errors.Is(err, bcrypt.ErrPasswordTooLong) {
+			return ErrPasswordTooLong
+		}
 		return fmtError(ErrRegisterHash, err)
 	}
 	newUser := &models.User{Username: username, Password: hashedPassword, Role: auth.RoleUser}
