@@ -4,6 +4,7 @@ import "time"
 
 type LoginUser struct {
 	Username string `json:"username" binding:"required"`
+	// Password is the plaintext password; must be at most 72 bytes (bcrypt limit).
 	Password string `json:"password" binding:"required"`
 }
 

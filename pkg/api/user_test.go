@@ -308,3 +308,59 @@ func TestRegisterHandlerDuplicateUsername(t *testing.T) {
 	assert.Equal(t, http.StatusConflict, w2.Code)
 	assert.Contains(t, w2.Body.String(), "username already taken")
 }
+
+func TestRegisterHandlerPasswordTooLong(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockUsers := repository.NewMockUserPersistence(ctrl)
+	h := NewUserHandler(mockUsers, nil, auth.NoopDenylist{})
+
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.POST("/register", h.RegisterHandler)
+
+	loginUser := models.LoginUser{
+		Username: "newuser",
+		Password: string(bytes.Repeat([]byte("a"), 73)),
+	}
+	requestBody, _ := json.Marshal(loginUser)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/register", bytes.NewBuffer(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, "password must be at most 72 bytes")
+}
+
+func TestRegisterHandlerPasswordAtExactLimit(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockUsers := repository.NewMockUserPersistence(ctrl)
+	// Exactly 72 bytes should pass the pre-check and reach Create.
+	mockUsers.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+	h := NewUserHandler(mockUsers, nil, auth.NoopDenylist{})
+
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.POST("/register", h.RegisterHandler)
+
+	loginUser := models.LoginUser{
+		Username: "newuser",
+		Password: string(bytes.Repeat([]byte("a"), 72)),
+	}
+	requestBody, _ := json.Marshal(loginUser)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/register", bytes.NewBuffer(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+}
+
+
