@@ -59,8 +59,8 @@ github.com/fsnotify/fsnotify v1.4.9 h1:hsms1Qyu0jgnwNXIxa+/V/PDsU6CfLf6CNO8H7IWo
 github.com/fsnotify/fsnotify v1.4.9/go.mod h1:znqG4EE+3YCdAaPaxE2ZRY/06pZUdp0tY4IgpuI1SZQ=
 github.com/gabriel-vasile/mimetype v1.4.15 h1:05iP/CYtZ/w455R/KZM6rZ5ieAdh99UPtd+d3YzLmaI=
 github.com/gabriel-vasile/mimetype v1.4.15/go.mod h1:azpTcoLcDZRNgFou5j+APrqQx9HqVPWa6ijYQIIVswQ=
-github.com/gin-contrib/cors v1.7.8 h1:U0jjyXlWXMEx27hFE6hmdg/TOZviYgsOGGT+kLmUZrc=
-github.com/gin-contrib/cors v1.7.8/go.mod h1:u3nLI2pP1IlJn7tbvL7iiubDO9quBZ8FXP9LxmqpsPI=
+github.com/gin-contrib/cors v1.7.9 h1:69rz5YU6PW7XlQ4VPXacl77ldFiUvR0E0bmEqmbq86w=
+github.com/gin-contrib/cors v1.7.9/go.mod h1:KTqiTA5HzlWPgVz7p4tolzAuptzGO7DEJn/CbklG0nU=
 github.com/gin-contrib/gzip v0.0.6 h1:NjcunTcGAj5CO1gn4N8jHOSIeRFHIbn51z6K+xaN4d4=
 github.com/gin-contrib/gzip v0.0.6/go.mod h1:QOJlmV2xmayAjkNS2Y8NQsMneuRShOU/kjovCXNuzzk=
 github.com/gin-contrib/secure v1.1.5 h1:56LKaYgPf237OGI5QvjjMc7MhevQmtB3gTv2u+d2j5k=
