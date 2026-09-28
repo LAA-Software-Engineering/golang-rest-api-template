@@ -5,7 +5,7 @@ go 1.26.8
 require (
 	github.com/araujo88/gin-gonic-xss-middleware v0.0.0-20221014023455-d89f16de6a7e
 	github.com/gin-contrib/cors v1.7.8
-	github.com/gin-contrib/secure v1.1.4
+	github.com/gin-contrib/secure v1.1.5
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/golang-jwt/jwt/v5 v5.3.1
