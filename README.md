@@ -185,7 +185,7 @@ golang-rest-api-template/
 
 ### Prerequisites
 
-- Go 1.26.9 or newer (see `go.mod`; aligns CI and Docker with `govulncheck` / patched stdlib)
+- Go 1.26.10 or newer (see `go.mod`; aligns CI and Docker with `govulncheck` / patched stdlib)
 - Docker
 - Docker Compose
 - (Optional) [sqlc](https://docs.sqlc.dev/en/latest/overview/install.html) — only needed to regenerate database code after editing `pkg/database/schema.sql` or `pkg/repository/queries/*.sql`. The generated code is committed, so it is **not** required to build, test, or run. `make sqlc-generate` invokes a pinned version via `go run`, so a local install is optional.
